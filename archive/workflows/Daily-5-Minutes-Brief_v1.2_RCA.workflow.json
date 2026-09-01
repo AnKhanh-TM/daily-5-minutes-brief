@@ -1,0 +1,1385 @@
+{
+  "name": "Daily 5 Minutes Brief_v1.2_RCA",
+  "nodes": [
+    {
+      "id": "trg-schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -520,
+        180
+      ],
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 7 * * *"
+            }
+          ]
+        }
+      },
+      "notes": "07:30 ICT hằng ngày. CN chỉ gửi một câu chúc; T7 chạy Weekly Performance; T2-T6 chạy daily brief."
+    },
+    {
+      "id": "trg-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -520,
+        340
+      ],
+      "parameters": {}
+    },
+    {
+      "id": "node-config",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -300,
+        240
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{ json: {\n  gcp_project: 'tmdatabase', bq_dataset: 'dm_base_crm', config_dataset: 'tmdatabase.dm_daily_brief', timezone: 'Asia/Ho_Chi_Minh',\n  thresholds: { kpi_normal_band_pct: 20, warning_drop_pct: 20, warning_zero_lead_days: 5, warning_pending_days: 3, warning_pending_min_count: 5, warning_open_deal_days: 14, warning_open_deal_min: 5, cvr_drop_pp: 5, focus_positive_pct: 15, focus_negative_pct: -15, min_base_volume: 3, unmapped_alert_min: 1 },\n  limits: { top_course_per_bu: 5, top_utm_rows: 8, top_utm_rows_weekly: 12, weekly_min_content_leads: 3, max_warning_rows: 12, rca_max_loops: 3, rca_max_rows: 200 },\n  openai_model: 'gpt-4.1'\n} }];"
+      },
+      "notes": "Cấu hình v1.2: lịch mới, ngưỡng content tuần và RCA tối đa 3 vòng."
+    },
+    {
+      "id": "node-resolve-day",
+      "name": "Resolve Day",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -80,
+        240
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "function vnParts(d) {\n  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });\n  const parts = fmt.formatToParts(d); const get = (t) => parts.find(p => p.type === t).value;\n  return { y: get('year'), m: get('month'), d: get('day'), weekday: get('weekday') };\n}\nfunction uuidv4() { return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => { const r=Math.random()*16|0; return (c==='x'?r:(r&3|8)).toString(16); }); }\nconst now=new Date(); const todayVN=vnParts(now); const weekdayMap={Mon:2,Tue:3,Wed:4,Thu:5,Fri:6,Sat:7,Sun:0};\nconst reportDay=weekdayMap[todayVN.weekday]; const isSaturday=todayVN.weekday==='Sat'; const isSunday=todayVN.weekday==='Sun';\nconst yesterdayDate=new Date(now.getTime()-86400000); const yVN=vnParts(yesterdayDate); const reportDate=yVN.y+'-'+yVN.m+'-'+yVN.d;\nconst dayNames={0:'Chủ Nhật',2:'Thứ Hai',3:'Thứ Ba',4:'Thứ Tư',5:'Thứ Năm',6:'Thứ Sáu',7:'Thứ Bảy'};\nconst focusTitles={2:'MARKETING DAY 1 ALERT',3:'MARKETING DAY 2 & BRAND ALERT',4:'EXECUTIVE EDUCATION ALERT',5:'DATA SCHOOL ALERT',6:'TM AI, FLEXIBLE COMBO & B2B TRAINING ALERT'};\nconst weekKey=todayVN.y+'-W'+String(Math.ceil((Number(todayVN.d)+6)/7)).padStart(2,'0');\nreturn [{json:{run_id:uuidv4(),report_date:reportDate,report_day:reportDay,is_saturday:isSaturday,is_sunday:isSunday,report_mode:isSunday?'sunday':(isSaturday?'weekly':'daily'),weekday_label:dayNames[reportDay]||'',focus_title:focusTitles[reportDay]||'',week_key:weekKey}}];"
+      },
+      "notes": "Router fields: daily T2-T6, weekly T7, Sunday message CN."
+    },
+    {
+      "id": "node-is-sunday",
+      "name": "Is Sunday?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        140,
+        240
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "node-is-sunday-condition",
+              "leftValue": "={{ $('Resolve Day').item.json.is_sunday }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "notes": "True = lời chúc CN; false = daily/weekly data branch."
+    },
+    {
+      "id": "node-is-saturday",
+      "name": "Is Saturday?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        360,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "cond-saturday",
+              "leftValue": "={{ $('Resolve Day').item.json.is_saturday }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "notes": "True = Weekly Performance; false = daily T2-T6."
+    },
+    {
+      "id": "q0",
+      "name": "Q0 Data Health",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        580,
+        420
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS ( SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course` WHERE course_key IS NOT NULL AND TRIM(course_key) != '' UNION ALL SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != '' ), base AS ( SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key FROM `tmdatabase.dm_base_crm.deals` d WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:') ), vde AS ( SELECT b.* EXCEPT(raw_key), IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm, IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm, IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm, m.report_day AS report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped FROM base b LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != '' ), p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d) SELECT course_name_norm AS course_name, COUNT(DISTINCT deal_id) AS n FROM vde, p WHERE DATE(created_at) = p.d AND is_unmapped GROUP BY course_name_norm ORDER BY n DESC",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "MVP: JOIN dim_course inline (course_map/base/vde) thay vi doc view v_deal_enriched - view nay CHUA TON TAI tren BigQuery (loi da xac nhan qua anh chup man hinh). Neu sau nay tao duoc view that, co the doi lai dung ban query gon o Daily-5-Minutes-Brief_v1.workflow.json."
+    },
+    {
+      "id": "q1",
+      "name": "Q1 KPI",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        800,
+        420
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS ( SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course` WHERE course_key IS NOT NULL AND TRIM(course_key) != '' UNION ALL SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != '' ), base AS ( SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key FROM `tmdatabase.dm_base_crm.deals` d WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:') ), vde AS ( SELECT b.* EXCEPT(raw_key), IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm, IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm, IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm, m.report_day AS report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped FROM base b LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != '' ), p AS ( SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d, DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 7 DAY) AS curr_start, DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS curr_end, DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 14 DAY) AS prev_start, DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 8 DAY) AS prev_end ), leads AS ( SELECT IF(DATE(created_at) BETWEEN p.curr_start AND p.curr_end, 'curr', 'prev') AS period, COUNT(DISTINCT deal_id) AS total_leads, COUNT(DISTINCT IF(stage_id IN (224,264,267,268,265,92,91,227,228,225,229,226,220,221,217,222,218,219,75,76,73,74,79,80,1328,1329,1330,1331,1332), deal_id, NULL)) AS mql, COUNT(DISTINCT IF(stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,218,219,75,76,74,80,1329,1330,1331,1332), deal_id, NULL)) AS sql_discovery, COUNT(DISTINCT IF(stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,219,75,76,1330,1331,1332), deal_id, NULL)) AS sql_needfit FROM vde, p WHERE DATE(created_at) BETWEEN p.prev_start AND p.curr_end GROUP BY period ), outcomes AS ( SELECT IF(DATE(closed_at) BETWEEN p.curr_start AND p.curr_end, 'curr', 'prev') AS period, COUNT(DISTINCT IF(deal_status = 'won', deal_id, NULL)) AS won_deals, COUNT(DISTINCT IF(deal_status = 'lost', deal_id, NULL)) AS lost_deals FROM vde, p WHERE closed_at IS NOT NULL AND DATE(closed_at) BETWEEN p.prev_start AND p.curr_end GROUP BY period ), yesterday AS ( SELECT COUNT(DISTINCT IF(DATE(created_at) = p.d, deal_id, NULL)) AS leads_yesterday, COUNT(DISTINCT IF(deal_status='won' AND DATE(closed_at) = p.d, deal_id, NULL)) AS won_yesterday FROM vde, p ), combined AS ( SELECT COALESCE(l.period, o.period) AS period, COALESCE(l.total_leads,0) / 7 AS avg_leads_per_day, COALESCE(l.mql,0) / 7 AS avg_mql_per_day, COALESCE(l.sql_discovery,0) / 7 AS avg_sql_discovery_per_day, COALESCE(l.sql_needfit,0) / 7 AS avg_sql_needfit_per_day, COALESCE(o.won_deals,0) / 7 AS avg_won_per_day, COALESCE(o.lost_deals,0) / 7 AS avg_lost_per_day, SAFE_DIVIDE(o.won_deals, o.won_deals + o.lost_deals) AS conversion_rate FROM leads l FULL OUTER JOIN outcomes o USING (period) ), pivot AS ( SELECT MAX(IF(period='curr', avg_leads_per_day, NULL)) AS curr_leads, MAX(IF(period='prev', avg_leads_per_day, NULL)) AS prev_leads, MAX(IF(period='curr', avg_mql_per_day, NULL)) AS curr_mql, MAX(IF(period='prev', avg_mql_per_day, NULL)) AS prev_mql, MAX(IF(period='curr', avg_sql_discovery_per_day, NULL)) AS curr_sql_discovery, MAX(IF(period='prev', avg_sql_discovery_per_day, NULL)) AS prev_sql_discovery, MAX(IF(period='curr', avg_sql_needfit_per_day, NULL)) AS curr_sql_needfit, MAX(IF(period='prev', avg_sql_needfit_per_day, NULL)) AS prev_sql_needfit, MAX(IF(period='curr', avg_won_per_day, NULL)) AS curr_won, MAX(IF(period='prev', avg_won_per_day, NULL)) AS prev_won, MAX(IF(period='curr', avg_lost_per_day, NULL)) AS curr_lost, MAX(IF(period='prev', avg_lost_per_day, NULL)) AS prev_lost, MAX(IF(period='curr', conversion_rate, NULL)) AS curr_cvr, MAX(IF(period='prev', conversion_rate, NULL)) AS prev_cvr FROM combined ) SELECT p.d AS report_date, y.leads_yesterday, y.won_yesterday, pv.curr_leads AS leads_avg7, SAFE_DIVIDE(pv.curr_leads - pv.prev_leads, NULLIF(pv.prev_leads,0)) AS leads_pct_change, pv.curr_won AS won_avg7, SAFE_DIVIDE(pv.curr_won - pv.prev_won, NULLIF(pv.prev_won,0)) AS won_pct_change, pv.curr_mql AS mql_avg7, SAFE_DIVIDE(pv.curr_mql - pv.prev_mql, NULLIF(pv.prev_mql,0)) AS mql_pct_change, pv.curr_sql_discovery AS sql_discovery_avg7, SAFE_DIVIDE(pv.curr_sql_discovery - pv.prev_sql_discovery, NULLIF(pv.prev_sql_discovery,0)) AS sql_discovery_pct_change, pv.curr_sql_needfit AS sql_needfit_avg7, SAFE_DIVIDE(pv.curr_sql_needfit - pv.prev_sql_needfit, NULLIF(pv.prev_sql_needfit,0)) AS sql_needfit_pct_change, pv.curr_lost AS lost_avg7, SAFE_DIVIDE(pv.curr_lost - pv.prev_lost, NULLIF(pv.prev_lost,0)) AS lost_pct_change, pv.curr_cvr AS conversion_rate, pv.curr_cvr - pv.prev_cvr AS cvr_change_pp FROM p, yesterday y, pivot pv",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "MVP: JOIN dim_course inline, khong doc view. Tra ve dung 1 dong. Khong co field revenue."
+    },
+    {
+      "id": "q2",
+      "name": "Q2 Breakdown",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        420
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS ( SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course` WHERE course_key IS NOT NULL AND TRIM(course_key) != '' UNION ALL SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != '' ), base AS ( SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key FROM `tmdatabase.dm_base_crm.deals` d WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:') ), vde AS ( SELECT b.* EXCEPT(raw_key), IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm, IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm, IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm, m.report_day AS report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped FROM base b LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != '' ), p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d), l AS ( SELECT course_type_norm, course_name_norm, COUNT(DISTINCT deal_id) AS leads FROM vde, p WHERE DATE(created_at) = p.d AND NOT is_unmapped GROUP BY 1,2 ), w AS ( SELECT course_type_norm, course_name_norm, COUNT(DISTINCT deal_id) AS deals FROM vde, p WHERE deal_status = 'won' AND DATE(closed_at) = p.d AND NOT is_unmapped GROUP BY 1,2 ) SELECT COALESCE(l.course_type_norm, w.course_type_norm) AS course_type, COALESCE(l.course_name_norm, w.course_name_norm) AS course_name, IFNULL(l.leads, 0) AS leads, IFNULL(w.deals, 0) AS deals FROM l FULL OUTER JOIN w ON l.course_type_norm = w.course_type_norm AND l.course_name_norm = w.course_name_norm ORDER BY course_type, deals DESC, leads DESC",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "MVP: JOIN dim_course inline."
+    },
+    {
+      "id": "q3",
+      "name": "Q3 UTM Daily",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        420
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS ( SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course` WHERE course_key IS NOT NULL AND TRIM(course_key) != '' UNION ALL SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != '' ), base AS ( SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key FROM `tmdatabase.dm_base_crm.deals` d WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:') ), vde AS ( SELECT b.* EXCEPT(raw_key), IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm, IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm, IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm, m.report_day AS report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped FROM base b LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != '' ), p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d) SELECT COALESCE(NULLIF(TRIM(utm_source), ''), '(not set)') AS utm_source, COALESCE(NULLIF(TRIM(utm_medium), ''), '(not set)') AS utm_medium, COALESCE(NULLIF(TRIM(utm_campaign), ''), '(not set)') AS utm_campaign, COALESCE(NULLIF(TRIM(utm_content), ''), '(not set)') AS utm_content, COALESCE(NULLIF(TRIM(utm_product), ''), '(not set)') AS utm_product, COUNT(DISTINCT deal_id) AS n_leads, COUNTIF(deal_status = 'won') AS n_won, COUNTIF(deal_status = 'lost') AS n_lost FROM vde, p WHERE DATE(created_at) = p.d GROUP BY 1,2,3,4,5 ORDER BY n_leads DESC LIMIT {{ $('Config').item.json.limits.top_utm_rows }}",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "MVP: JOIN dim_course inline (chi de tru deal rac, khong can course cho UTM)."
+    },
+    {
+      "id": "q4",
+      "name": "Q4 No-Lead Courses",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1460,
+        420
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS ( SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course` WHERE course_key IS NOT NULL AND TRIM(course_key) != '' UNION ALL SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != '' ), base AS ( SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key FROM `tmdatabase.dm_base_crm.deals` d WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:') ), vde AS ( SELECT b.* EXCEPT(raw_key), IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm, IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm, IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm, m.report_day AS report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped FROM base b LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != '' ), p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d), last_lead AS ( SELECT course_key_norm, MAX(DATE(created_at)) AS last_lead_date FROM vde GROUP BY course_key_norm ) SELECT c.course_type, c.course_name, ll.last_lead_date, DATE_DIFF(p.d, IFNULL(ll.last_lead_date, DATE_SUB(p.d, INTERVAL 999 DAY)), DAY) AS days_no_lead FROM `tmdatabase.dm_daily_brief.dim_course` c CROSS JOIN p LEFT JOIN last_lead ll ON ll.course_key_norm = c.course_key WHERE c.is_active AND (ll.last_lead_date IS NULL OR ll.last_lead_date < p.d) ORDER BY days_no_lead DESC",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "MVP: JOIN dim_course inline."
+    },
+    {
+      "id": "q5",
+      "name": "Q5 Warning Scan",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        420
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS ( SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course` WHERE course_key IS NOT NULL AND TRIM(course_key) != '' UNION ALL SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != '' ), base AS ( SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key FROM `tmdatabase.dm_base_crm.deals` d WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:') ), vde AS ( SELECT b.* EXCEPT(raw_key), IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm, IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm, IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm, m.report_day AS report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped FROM base b LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != '' ), p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d), lead_win AS ( SELECT course_key_norm, COUNTIF(DATE(created_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS lead_now, COUNTIF(DATE(created_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS lead_prev FROM vde, p WHERE DATE(created_at) >= DATE_SUB(d, INTERVAL 13 DAY) GROUP BY course_key_norm ), deal_win AS ( SELECT course_key_norm, COUNTIF(DATE(closed_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS deal_now, COUNTIF(DATE(closed_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS deal_prev FROM vde, p WHERE deal_status = 'won' AND closed_at IS NOT NULL AND DATE(closed_at) >= DATE_SUB(d, INTERVAL 13 DAY) GROUP BY course_key_norm ), no_lead AS ( SELECT c.course_key, DATE_DIFF(p.d, IFNULL(MAX(DATE(v.created_at)), DATE_SUB(p.d, INTERVAL 999 DAY)), DAY) AS days_no_lead FROM `tmdatabase.dm_daily_brief.dim_course` c CROSS JOIN p LEFT JOIN vde v ON v.course_key_norm = c.course_key WHERE c.is_active GROUP BY c.course_key, p.d ), activity_agg AS ( SELECT deal_id, COUNT(*) AS activity_count FROM `tmdatabase.dm_base_crm.deal_activities` GROUP BY deal_id ), pending AS ( SELECT v.course_key_norm, COUNT(DISTINCT v.deal_id) AS pending_leads FROM vde v LEFT JOIN activity_agg a ON a.deal_id = v.deal_id CROSS JOIN p WHERE v.deal_status = 'open' AND IFNULL(a.activity_count, 0) = 0 AND DATE(v.created_at) <= DATE_SUB(p.d, INTERVAL {{ $('Config').item.json.thresholds.warning_pending_days }} DAY) GROUP BY v.course_key_norm ), open_deal AS ( SELECT course_key_norm, COUNT(DISTINCT deal_id) AS stale_open_deals FROM vde WHERE deal_status = 'open' AND stage_start_at IS NOT NULL AND DATETIME_DIFF(CURRENT_DATETIME('Asia/Ho_Chi_Minh'), stage_start_at, DAY) > {{ $('Config').item.json.thresholds.warning_open_deal_days }} GROUP BY course_key_norm ) SELECT c.course_type, c.course_name, ROUND(IFNULL(lw.lead_now,0)/7, 2) AS lead_per_day_now, ROUND(IFNULL(lw.lead_prev,0)/7, 2) AS lead_per_day_prev, SAFE_DIVIDE(IFNULL(lw.lead_now,0) - IFNULL(lw.lead_prev,0), NULLIF(lw.lead_prev,0)) * 100 AS lead_delta_pct, ROUND(IFNULL(dw.deal_now,0)/7, 2) AS deal_per_day_now, ROUND(IFNULL(dw.deal_prev,0)/7, 2) AS deal_per_day_prev, SAFE_DIVIDE(IFNULL(dw.deal_now,0) - IFNULL(dw.deal_prev,0), NULLIF(dw.deal_prev,0)) * 100 AS deal_delta_pct, nl.days_no_lead, IFNULL(pd.pending_leads, 0) AS pending_leads, IFNULL(od.stale_open_deals, 0) AS stale_open_deals, (IFNULL(lw.lead_prev,0) >= {{ $('Config').item.json.thresholds.min_base_volume }} AND SAFE_DIVIDE(IFNULL(lw.lead_now,0) - lw.lead_prev, lw.lead_prev) * 100 <= -{{ $('Config').item.json.thresholds.warning_drop_pct }}) AS flag_lead_drop, (IFNULL(dw.deal_prev,0) >= {{ $('Config').item.json.thresholds.min_base_volume }} AND SAFE_DIVIDE(IFNULL(dw.deal_now,0) - dw.deal_prev, dw.deal_prev) * 100 <= -{{ $('Config').item.json.thresholds.warning_drop_pct }}) AS flag_deal_drop, (nl.days_no_lead >= {{ $('Config').item.json.thresholds.warning_zero_lead_days }}) AS flag_no_lead, (IFNULL(pd.pending_leads,0) >= {{ $('Config').item.json.thresholds.warning_pending_min_count }}) AS flag_pending, (IFNULL(od.stale_open_deals,0) >= {{ $('Config').item.json.thresholds.warning_open_deal_min }}) AS flag_stale_open FROM `tmdatabase.dm_daily_brief.dim_course` c LEFT JOIN lead_win lw ON lw.course_key_norm = c.course_key LEFT JOIN deal_win dw ON dw.course_key_norm = c.course_key LEFT JOIN no_lead nl ON nl.course_key = c.course_key LEFT JOIN pending pd ON pd.course_key_norm = c.course_key LEFT JOIN open_deal od ON od.course_key_norm = c.course_key WHERE c.is_active ORDER BY lead_delta_pct ASC NULLS LAST",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "MVP: JOIN dim_course inline. Build Payload loc chi giu dong co >=1 co TRUE."
+    },
+    {
+      "id": "q6",
+      "name": "Q6 Focus Group",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1900,
+        420
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS ( SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course` WHERE course_key IS NOT NULL AND TRIM(course_key) != '' UNION ALL SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != '' ), base AS ( SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key FROM `tmdatabase.dm_base_crm.deals` d WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:') ), vde AS ( SELECT b.* EXCEPT(raw_key), IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm, IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm, IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm, m.report_day AS report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped FROM base b LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != '' ), p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d), scope AS ( SELECT course_key, course_name, course_type FROM `tmdatabase.dm_daily_brief.dim_course` WHERE report_day = {{ $('Resolve Day').item.json.report_day }} AND is_active ), lead_agg AS ( SELECT v.course_key_norm, COUNTIF(DATE(v.created_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS n_now, COUNTIF(DATE(v.created_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p7, COUNTIF(DATE(v.created_at) BETWEEN DATE_SUB(d, INTERVAL 36 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p30, COUNTIF(DATE(v.created_at) BETWEEN DATE_SUB(d, INTERVAL 96 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p90 FROM vde v, p WHERE v.course_key_norm IN (SELECT course_key FROM scope) AND DATE(v.created_at) >= DATE_SUB(d, INTERVAL 96 DAY) GROUP BY v.course_key_norm ), deal_agg AS ( SELECT v.course_key_norm, COUNTIF(DATE(v.closed_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS n_now, COUNTIF(DATE(v.closed_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p7, COUNTIF(DATE(v.closed_at) BETWEEN DATE_SUB(d, INTERVAL 36 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p30, COUNTIF(DATE(v.closed_at) BETWEEN DATE_SUB(d, INTERVAL 96 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p90 FROM vde v, p WHERE v.deal_status = 'won' AND v.course_key_norm IN (SELECT course_key FROM scope) AND v.closed_at IS NOT NULL AND DATE(v.closed_at) >= DATE_SUB(d, INTERVAL 96 DAY) GROUP BY v.course_key_norm ) SELECT s.course_type, s.course_name, ROUND(IFNULL(la.n_now,0)/7, 2) AS lead_pd_now, ROUND(IFNULL(la.n_p7,0)/7, 2) AS lead_pd_prev7, ROUND(IFNULL(la.n_p30,0)/30, 2) AS lead_pd_prev30, ROUND(IFNULL(la.n_p90,0)/90, 2) AS lead_pd_prev90, ROUND(IFNULL(da.n_now,0)/7, 2) AS deal_pd_now, ROUND(IFNULL(da.n_p7,0)/7, 2) AS deal_pd_prev7, ROUND(IFNULL(da.n_p30,0)/30, 2) AS deal_pd_prev30, ROUND(IFNULL(da.n_p90,0)/90, 2) AS deal_pd_prev90 FROM scope s LEFT JOIN lead_agg la ON la.course_key_norm = s.course_key LEFT JOIN deal_agg da ON da.course_key_norm = s.course_key ORDER BY deal_pd_now DESC",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "Chỉ chạy T2-T6. report_day=6 bao gồm TM AI + Flexible Combo 2/3/4 + B2B Training sau khi cập nhật Sheet."
+    },
+    {
+      "id": "q7-weekly-performance",
+      "name": "Q7 Weekly Performance",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        580,
+        120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS (\n  SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active\n  FROM `tmdatabase.dm_daily_brief.dim_course`\n  WHERE course_key IS NOT NULL AND TRIM(course_key) != ''\n  UNION ALL\n  SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active\n  FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a\n  WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != ''\n), base AS (\n  SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key\n  FROM `tmdatabase.dm_base_crm.deals` d\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n), vde AS (\n  SELECT b.* EXCEPT(raw_key),\n    IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm,\n    IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm,\n    IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm,\n    m.report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped\n  FROM base b\n  LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != ''\n),\np AS (\n  SELECT\n    DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 5 DAY) AS curr_start,\n    DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS curr_end,\n    DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 12 DAY) AS prev_start,\n    DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 8 DAY) AS prev_end\n), lead_agg AS (\n  SELECT course_key_norm,\n    COUNT(DISTINCT IF(DATE(created_at) BETWEEN p.curr_start AND p.curr_end, deal_id, NULL)) AS leads_this_week,\n    COUNT(DISTINCT IF(DATE(created_at) BETWEEN p.prev_start AND p.prev_end, deal_id, NULL)) AS leads_last_week\n  FROM vde, p\n  WHERE DATE(created_at) BETWEEN p.prev_start AND p.curr_end\n  GROUP BY course_key_norm\n), close_agg AS (\n  SELECT course_key_norm,\n    COUNT(DISTINCT IF(DATE(closed_at) BETWEEN p.curr_start AND p.curr_end AND deal_status='won', deal_id, NULL)) AS won_this_week,\n    COUNT(DISTINCT IF(DATE(closed_at) BETWEEN p.curr_start AND p.curr_end AND deal_status='lost', deal_id, NULL)) AS lost_this_week,\n    COUNT(DISTINCT IF(DATE(closed_at) BETWEEN p.prev_start AND p.prev_end AND deal_status='won', deal_id, NULL)) AS won_last_week,\n    COUNT(DISTINCT IF(DATE(closed_at) BETWEEN p.prev_start AND p.prev_end AND deal_status='lost', deal_id, NULL)) AS lost_last_week\n  FROM vde, p\n  WHERE closed_at IS NOT NULL AND DATE(closed_at) BETWEEN p.prev_start AND p.curr_end\n  GROUP BY course_key_norm\n)\nSELECT c.course_type, c.course_name,\n  IFNULL(l.leads_this_week,0) AS leads_this_week,\n  IFNULL(l.leads_last_week,0) AS leads_last_week,\n  SAFE_DIVIDE(IFNULL(l.leads_this_week,0)-IFNULL(l.leads_last_week,0), NULLIF(l.leads_last_week,0))*100 AS lead_delta_pct,\n  IFNULL(d.won_this_week,0) AS won_this_week,\n  IFNULL(d.lost_this_week,0) AS lost_this_week,\n  IFNULL(d.won_last_week,0) AS won_last_week,\n  IFNULL(d.lost_last_week,0) AS lost_last_week,\n  SAFE_DIVIDE(d.won_this_week, d.won_this_week+d.lost_this_week) AS conversion_rate_this_week,\n  SAFE_DIVIDE(d.won_last_week, d.won_last_week+d.lost_last_week) AS conversion_rate_last_week,\n  (SAFE_DIVIDE(d.won_this_week,d.won_this_week+d.lost_this_week)-SAFE_DIVIDE(d.won_last_week,d.won_last_week+d.lost_last_week))*100 AS cvr_change_pp\nFROM `tmdatabase.dm_daily_brief.dim_course` c\nLEFT JOIN lead_agg l ON l.course_key_norm=c.course_key\nLEFT JOIN close_agg d ON d.course_key_norm=c.course_key\nWHERE c.is_active\nORDER BY won_this_week DESC, conversion_rate_this_week DESC, leads_this_week DESC",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "Toàn bộ khóa active, tuần T2-T6 hiện tại so với T2-T6 tuần trước."
+    },
+    {
+      "id": "q7-weekly-content",
+      "name": "Q7 Content Performance",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        800,
+        120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS (\n  SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active\n  FROM `tmdatabase.dm_daily_brief.dim_course`\n  WHERE course_key IS NOT NULL AND TRIM(course_key) != ''\n  UNION ALL\n  SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active\n  FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a\n  WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != ''\n), base AS (\n  SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key\n  FROM `tmdatabase.dm_base_crm.deals` d\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n), vde AS (\n  SELECT b.* EXCEPT(raw_key),\n    IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm,\n    IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm,\n    IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm,\n    m.report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped\n  FROM base b\n  LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != ''\n),\np AS (\n  SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 5 DAY) AS d_start,\n         DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d_end\n)\nSELECT\n  COALESCE(NULLIF(TRIM(utm_source),''),'(not set)') AS utm_source,\n  COALESCE(NULLIF(TRIM(utm_medium),''),'(not set)') AS utm_medium,\n  COALESCE(NULLIF(TRIM(utm_campaign),''),'(not set)') AS utm_campaign,\n  COALESCE(NULLIF(TRIM(utm_content),''),'(not set)') AS utm_content,\n  COALESCE(NULLIF(TRIM(utm_product),''),'(not set)') AS utm_product,\n  COUNT(DISTINCT deal_id) AS n_leads,\n  COUNTIF(deal_status='won') AS n_won,\n  COUNTIF(deal_status='lost') AS n_lost,\n  COUNTIF(deal_status IN ('won','lost')) AS n_closed,\n  SAFE_DIVIDE(COUNTIF(deal_status='won'),COUNTIF(deal_status IN ('won','lost'))) AS conversion_rate\nFROM vde, p\nWHERE DATE(created_at) BETWEEN p.d_start AND p.d_end\nGROUP BY 1,2,3,4,5\nORDER BY n_leads DESC\nLIMIT {{ $('Config').item.json.limits.top_utm_rows_weekly }}",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "Content/UTM combo tuần T2-T6; Build Payload tách top lead và top CVR đủ mẫu."
+    },
+    {
+      "id": "q7-weekly-warnings",
+      "name": "Q7 Warning Snapshot",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1020,
+        120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS ( SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course` WHERE course_key IS NOT NULL AND TRIM(course_key) != '' UNION ALL SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != '' ), base AS ( SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key FROM `tmdatabase.dm_base_crm.deals` d WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:') ), vde AS ( SELECT b.* EXCEPT(raw_key), IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm, IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm, IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm, m.report_day AS report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped FROM base b LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != '' ), p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d), lead_win AS ( SELECT course_key_norm, COUNTIF(DATE(created_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS lead_now, COUNTIF(DATE(created_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS lead_prev FROM vde, p WHERE DATE(created_at) >= DATE_SUB(d, INTERVAL 13 DAY) GROUP BY course_key_norm ), deal_win AS ( SELECT course_key_norm, COUNTIF(DATE(closed_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS deal_now, COUNTIF(DATE(closed_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS deal_prev FROM vde, p WHERE deal_status = 'won' AND closed_at IS NOT NULL AND DATE(closed_at) >= DATE_SUB(d, INTERVAL 13 DAY) GROUP BY course_key_norm ), no_lead AS ( SELECT c.course_key, DATE_DIFF(p.d, IFNULL(MAX(DATE(v.created_at)), DATE_SUB(p.d, INTERVAL 999 DAY)), DAY) AS days_no_lead FROM `tmdatabase.dm_daily_brief.dim_course` c CROSS JOIN p LEFT JOIN vde v ON v.course_key_norm = c.course_key WHERE c.is_active GROUP BY c.course_key, p.d ), activity_agg AS ( SELECT deal_id, COUNT(*) AS activity_count FROM `tmdatabase.dm_base_crm.deal_activities` GROUP BY deal_id ), pending AS ( SELECT v.course_key_norm, COUNT(DISTINCT v.deal_id) AS pending_leads FROM vde v LEFT JOIN activity_agg a ON a.deal_id = v.deal_id CROSS JOIN p WHERE v.deal_status = 'open' AND IFNULL(a.activity_count, 0) = 0 AND DATE(v.created_at) <= DATE_SUB(p.d, INTERVAL {{ $('Config').item.json.thresholds.warning_pending_days }} DAY) GROUP BY v.course_key_norm ), open_deal AS ( SELECT course_key_norm, COUNT(DISTINCT deal_id) AS stale_open_deals FROM vde WHERE deal_status = 'open' AND stage_start_at IS NOT NULL AND DATETIME_DIFF(CURRENT_DATETIME('Asia/Ho_Chi_Minh'), stage_start_at, DAY) > {{ $('Config').item.json.thresholds.warning_open_deal_days }} GROUP BY course_key_norm ) SELECT c.course_type, c.course_name, ROUND(IFNULL(lw.lead_now,0)/7, 2) AS lead_per_day_now, ROUND(IFNULL(lw.lead_prev,0)/7, 2) AS lead_per_day_prev, SAFE_DIVIDE(IFNULL(lw.lead_now,0) - IFNULL(lw.lead_prev,0), NULLIF(lw.lead_prev,0)) * 100 AS lead_delta_pct, ROUND(IFNULL(dw.deal_now,0)/7, 2) AS deal_per_day_now, ROUND(IFNULL(dw.deal_prev,0)/7, 2) AS deal_per_day_prev, SAFE_DIVIDE(IFNULL(dw.deal_now,0) - IFNULL(dw.deal_prev,0), NULLIF(dw.deal_prev,0)) * 100 AS deal_delta_pct, nl.days_no_lead, IFNULL(pd.pending_leads, 0) AS pending_leads, IFNULL(od.stale_open_deals, 0) AS stale_open_deals, (IFNULL(lw.lead_prev,0) >= {{ $('Config').item.json.thresholds.min_base_volume }} AND SAFE_DIVIDE(IFNULL(lw.lead_now,0) - lw.lead_prev, lw.lead_prev) * 100 <= -{{ $('Config').item.json.thresholds.warning_drop_pct }}) AS flag_lead_drop, (IFNULL(dw.deal_prev,0) >= {{ $('Config').item.json.thresholds.min_base_volume }} AND SAFE_DIVIDE(IFNULL(dw.deal_now,0) - dw.deal_prev, dw.deal_prev) * 100 <= -{{ $('Config').item.json.thresholds.warning_drop_pct }}) AS flag_deal_drop, (nl.days_no_lead >= {{ $('Config').item.json.thresholds.warning_zero_lead_days }}) AS flag_no_lead, (IFNULL(pd.pending_leads,0) >= {{ $('Config').item.json.thresholds.warning_pending_min_count }}) AS flag_pending, (IFNULL(od.stale_open_deals,0) >= {{ $('Config').item.json.thresholds.warning_open_deal_min }}) AS flag_stale_open FROM `tmdatabase.dm_daily_brief.dim_course` c LEFT JOIN lead_win lw ON lw.course_key_norm = c.course_key LEFT JOIN deal_win dw ON dw.course_key_norm = c.course_key LEFT JOIN no_lead nl ON nl.course_key = c.course_key LEFT JOIN pending pd ON pd.course_key_norm = c.course_key LEFT JOIN open_deal od ON od.course_key_norm = c.course_key WHERE c.is_active ORDER BY lead_delta_pct ASC NULLS LAST",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "Snapshot cảnh báo toàn khóa tại thời điểm tổng kết tuần."
+    },
+    {
+      "id": "q7-weekly-health",
+      "name": "Q7 Weekly Data Health",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        1240,
+        120
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH course_map AS (\n  SELECT LOWER(TRIM(course_key)) AS raw_key, course_key, course_name, course_type, report_day, is_active\n  FROM `tmdatabase.dm_daily_brief.dim_course`\n  WHERE course_key IS NOT NULL AND TRIM(course_key) != ''\n  UNION ALL\n  SELECT LOWER(TRIM(a)), course_key, course_name, course_type, report_day, is_active\n  FROM `tmdatabase.dm_daily_brief.dim_course`, UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS a\n  WHERE TRIM(a) != '' AND course_key IS NOT NULL AND TRIM(course_key) != ''\n), base AS (\n  SELECT d.*, LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key\n  FROM `tmdatabase.dm_base_crm.deals` d\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n), vde AS (\n  SELECT b.* EXCEPT(raw_key),\n    IFNULL(m.course_key, CONCAT('[unmapped] ', b.raw_key)) AS course_key_norm,\n    IFNULL(m.course_name, IF(b.raw_key = '', '[CHUA CHON KHOA]', CONCAT('[CHUA MAP] ', b.selected_course))) AS course_name_norm,\n    IFNULL(m.course_type, 'Chua phan loai') AS course_type_norm,\n    m.report_day, IFNULL(m.is_active, FALSE) AS is_active_course, (m.course_key IS NULL) AS is_unmapped\n  FROM base b\n  LEFT JOIN course_map m ON m.raw_key = b.raw_key AND b.raw_key != ''\n),\np AS (\n  SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 5 DAY) AS d_start,\n         DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d_end\n)\nSELECT course_name_norm AS course_name, COUNT(DISTINCT deal_id) AS n\nFROM vde, p\nWHERE DATE(created_at) BETWEEN p.d_start AND p.d_end AND is_unmapped\nGROUP BY course_name_norm\nORDER BY n DESC",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "Khóa chưa map/chưa chọn khóa trong tuần T2-T6."
+    },
+    {
+      "id": "node-build-payload",
+      "name": "Build Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2140,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const cfg=$('Config').first().json; const rd=$('Resolve Day').first().json;\nfunction rows(name){ return $(name).all().map(i=>i.json); }\nfunction countFlags(r){ return ['flag_lead_drop','flag_deal_drop','flag_no_lead','flag_pending','flag_stale_open'].reduce((n,k)=>n+(r[k]?1:0),0); }\nlet payload={run_id:rd.run_id,report_date:rd.report_date,weekday_label:rd.weekday_label,focus_title:rd.focus_title,report_mode:rd.report_mode,is_saturday:rd.is_saturday,is_sunday:false};\nif(rd.is_saturday){\n  const courses=rows('Q7 Weekly Performance'); const content=rows('Q7 Content Performance'); const warningRaw=rows('Q7 Warning Snapshot'); const healthRows=rows('Q7 Weekly Data Health');\n  const warnings=warningRaw.filter(r=>countFlags(r)>0).sort((a,b)=>countFlags(b)-countFlags(a)).slice(0,cfg.limits.max_warning_rows);\n  const tracked=content.filter(r=>String(r.utm_content||'').trim() && r.utm_content!=='(not set)');\n  const content_top_leads=[...tracked].sort((a,b)=>Number(b.n_leads||0)-Number(a.n_leads||0)).slice(0,5);\n  const content_top_cvr=[...tracked].filter(r=>Number(r.n_leads||0)>=cfg.limits.weekly_min_content_leads && r.conversion_rate!==null).sort((a,b)=>Number(b.conversion_rate||0)-Number(a.conversion_rate||0)||Number(b.n_leads||0)-Number(a.n_leads||0)).slice(0,5);\n  const ranked=[...courses]; const strongest=[...ranked].sort((a,b)=>Number(b.won_this_week||0)-Number(a.won_this_week||0)||Number(b.conversion_rate_this_week??-1)-Number(a.conversion_rate_this_week??-1)||Number(b.leads_this_week||0)-Number(a.leads_this_week||0))[0]||null;\n  const weakest=[...ranked].sort((a,b)=>Number(a.won_this_week||0)-Number(b.won_this_week||0)||Number(a.conversion_rate_this_week??999)-Number(b.conversion_rate_this_week??999)||Number(a.lead_delta_pct??999)-Number(b.lead_delta_pct??999))[0]||null;\n  const unmapped_total=healthRows.reduce((s,r)=>s+Number(r.n||0),0);\n  payload={...payload,weekly_performance:courses,strongest_course:strongest,weakest_course:weakest,content_top_leads,content_top_cvr,utm_weekly:content,warnings,data_health:{unmapped_total,show_alert:unmapped_total>=cfg.thresholds.unmapped_alert_min,rows:healthRows}};\n} else {\n  const q0=rows('Q0 Data Health'); const q5raw=rows('Q5 Warning Scan'); const q5=q5raw.filter(r=>countFlags(r)>0).sort((a,b)=>countFlags(b)-countFlags(a)).slice(0,cfg.limits.max_warning_rows); const unmapped_total=q0.reduce((s,r)=>s+Number(r.n||0),0);\n  payload={...payload,kpi:$('Q1 KPI').first()?.json||{},breakdown:rows('Q2 Breakdown'),utm_daily:rows('Q3 UTM Daily'),no_lead_courses:rows('Q4 No-Lead Courses'),warnings:q5,focus_group:rows('Q6 Focus Group'),data_health:{unmapped_total,show_alert:unmapped_total>=cfg.thresholds.unmapped_alert_min,rows:q0}};\n}\nreturn [{json:payload}];"
+      },
+      "notes": "Payload theo mode: daily T2-T6 hoặc weekly T7. Không chạy vào CN."
+    },
+    {
+      "id": "node-lm-writer",
+      "name": "OpenAI Model - Writer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        2360,
+        500
+      ],
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "node-agent-1",
+      "name": "Agent 1 - Brief Writer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        2360,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Dữ liệu đã tính sẵn:\n{{ JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "Bạn là Brief Writer của Tomorrow Marketers. Chỉ diễn giải số có trong JSON, không tự tính, không bịa và tuyệt đối không nhắc revenue/doanh thu.\nNếu report_mode=daily: dùng các khối 📊 HÔM QUA, 🔗 NGUỒN LEAD, 🚫 KHÓA KHÔNG LEAD, 🧩 DATA HEALTH, ⚠️ WARNING, 📚 FOCUS GROUP; ngắn gọn để đọc trong 5 phút.\nNếu report_mode=weekly: chỉ viết 📅 WEEKLY PERFORMANCE gồm toàn cảnh T2-T6, khóa mạnh nhất/yếu nhất, tăng/giảm, content nhiều lead, content CVR cao đủ mẫu, rủi ro và data health; không viết HÔM QUA hay Focus Group. CVR content là CVR cohort hiện tại. (not set) là không tracking/lead tay, không gọi là content.\nKhông phân tích nguyên nhân sâu; khối 🔍 AI ANALYZE sẽ được RCA tạo sau."
+        }
+      },
+      "notes": "Writer cho daily và weekly; không suy đoán root cause."
+    },
+    {
+      "id": "node-lm-sunday",
+      "name": "OpenAI Model - Sunday",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        580,
+        -260
+      ],
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": {
+          "temperature": 0.9
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "node-sunday-writer",
+      "name": "Sunday Message Writer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        580,
+        -100
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Tuần: {{ $('Resolve Day').item.json.week_key }}",
+        "options": {
+          "systemMessage": "Viết đúng 1 câu tiếng Việt, tối đa 40 từ, vừa hài hước nhẹ, vừa có động lực, vừa chúc một ngày cuối tuần vui vẻ. Không KPI, không khóa học, không giao việc, không xuống dòng, chỉ trả câu hoàn chỉnh."
+        }
+      },
+      "notes": "Chỉ chạy Chủ Nhật."
+    },
+    {
+      "id": "node-assemble-sunday",
+      "name": "Assemble Sunday Message",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        800,
+        -100
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const rd=$('Resolve Day').first().json; const message=$json.output||$json.text||''; return [{json:{run_id:rd.run_id,report_date:rd.report_date,sent_at:new Date().toISOString(),query_results:JSON.stringify({report_mode:'sunday',week_key:rd.week_key}),agent_output:message.trim(),status:'success',error_message:null}}];"
+      },
+      "notes": "Tạo output log/final cho Chủ Nhật, không chạy RCA."
+    },
+    {
+      "id": "node-rca-init",
+      "name": "RCA Init",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2580,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const cfg=$('Config').first().json; const payload=$('Build Payload').first().json; const brief=$json.output||$json.text||''; return [{json:{payload,brief_text:brief,iteration:1,max_loops:cfg.limits.rca_max_loops,invalid_streak:0,history:[],should_continue:true}}];"
+      },
+      "notes": "Khởi tạo accumulator cho tối đa 3 vòng RCA."
+    },
+    {
+      "id": "node-lm-rca-planner",
+      "name": "OpenAI Model - RCA Planner",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        2800,
+        500
+      ],
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "node-rca-planner",
+      "name": "RCA Planner",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        2800,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Trạng thái RCA:\n{{ JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "Bạn là RCA Planner. Chọn đúng 1 bất thường quan trọng chưa được kiểm chứng trong history. Ưu tiên warning cụ thể, khóa mạnh/yếu bất thường hoặc content/funnel có biến động. Không viết SQL. Trả JSON thuần, không markdown, dạng {\"state\":<chép nguyên input state>,\"hypothesis\":\"...\",\"rationale\":\"...\"}. Không sửa hoặc lược bỏ state."
+        }
+      },
+      "notes": "Mỗi vòng chọn một giả thuyết có thể kiểm chứng bằng CRM."
+    },
+    {
+      "id": "node-lm-rca-sql",
+      "name": "OpenAI Model - RCA SQL",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        3020,
+        500
+      ],
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": {
+          "temperature": 0.1
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "node-rca-sql-writer",
+      "name": "RCA SQL Writer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        3020,
+        300
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Kế hoạch RCA:\n{{ $json.output || $json.text || \"\" }}",
+        "options": {
+          "systemMessage": "Bạn là BigQuery SQL Writer. Viết đúng 1 query chỉ đọc để kiểm chứng hypothesis. Chỉ dùng tmdatabase.dm_base_crm.deals, stages, pipelines, deal_activities và tmdatabase.dm_daily_brief.dim_course. Deal phải loại failed_reason_id bắt đầu bằng Trash:. deal_activities phải aggregate theo deal_id trước khi JOIN. Luôn có cửa sổ thời gian tối đa 90 ngày và LIMIT không quá 200. Không dùng SELECT *. Trả JSON thuần, không markdown: {\"state\":<chép nguyên state>,\"hypothesis\":\"...\",\"rationale\":\"...\",\"sql\":\"SELECT ... LIMIT 200\"}."
+        }
+      },
+      "notes": "Sinh một query SELECT an toàn cho mỗi giả thuyết."
+    },
+    {
+      "id": "node-sql-guardrail",
+      "name": "SQL Guardrail",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3240,
+        300
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "function clean(v,lang){ let s=String(v||'').trim(); const fence=String.fromCharCode(96).repeat(3); if(s.startsWith(fence)){ s=s.slice(3).replace(new RegExp('^'+(lang||'json'),'i'),'').trim(); } if(s.endsWith(fence)) s=s.slice(0,-3).trim(); return s; } function parse(v){ if(typeof v==='object')return v; return JSON.parse(clean(v,'json')); }\nlet parsed; try{ parsed=parse($json.output||$json.text||$json); }catch(e){ return [{json:{state:{iteration:1,max_loops:3,invalid_streak:0,history:[]},hypothesis:'Không đọc được output SQL Writer',sql:'',sql_valid:false,guardrail_reason:'JSON không hợp lệ: '+e.message}}]; }\nlet sql=clean(parsed.sql||'','sql').replace(/;\\s*$/,''); const reasons=[];\nif(!/^(SELECT|WITH)\\b/i.test(sql)) reasons.push('Query phải bắt đầu bằng SELECT hoặc WITH');\nif(/\\b(INSERT|UPDATE|DELETE|DROP|CREATE|MERGE|ALTER|TRUNCATE|CALL|EXECUTE|GRANT|REVOKE)\\b/i.test(sql)) reasons.push('Có từ khóa ghi/xóa bị cấm');\nif(sql.includes(';')) reasons.push('Không cho phép nhiều statement');\nif(/SELECT\\s+\\*/i.test(sql)) reasons.push('Không cho phép SELECT *');\nconst lm=sql.match(/\\bLIMIT\\s+(\\d+)\\b/i); if(!lm) reasons.push('Thiếu LIMIT'); else if(Number(lm[1])>200) reasons.push('LIMIT vượt 200');\nconst tick=String.fromCharCode(96); const parts=sql.split(tick); const refs=parts.filter((_,i)=>i%2===1); if(refs.some(r=>!r.startsWith('tmdatabase.dm_base_crm.')&&r!=='tmdatabase.dm_daily_brief.dim_course')) reasons.push('Tham chiếu bảng ngoài allowlist');\nreturn [{json:{state:parsed.state||{},hypothesis:parsed.hypothesis||'',rationale:parsed.rationale||'',sql,sql_valid:reasons.length===0,guardrail_reason:reasons.join('; ')}}];"
+      },
+      "notes": "Chặn ghi dữ liệu, nhiều statement, SELECT *, bảng ngoài allowlist và LIMIT quá 200."
+    },
+    {
+      "id": "node-is-sql-valid",
+      "name": "Is SQL Valid?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        3460,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "node-is-sql-valid-condition",
+              "leftValue": "={{ $json.sql_valid }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "notes": "True = chạy BigQuery; false = ghi lỗi và thử vòng khác."
+    },
+    {
+      "id": "node-bq-rca",
+      "name": "BigQuery Execute RCA",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        3680,
+        180
+      ],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "={{ $json.sql }}",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "notes": "Chạy query đã qua guardrail bằng BigQuery node thường, không dùng googleBigQueryTool.",
+      "onError": "continueRegularOutput"
+    },
+    {
+      "id": "node-aggregate-rca",
+      "name": "Aggregate RCA Results",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3900,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "let guard; try{ guard=$('SQL Guardrail').item.json; }catch(e){ guard=$('SQL Guardrail').first().json; } const result_rows=$input.all().map(i=>i.json); return [{json:{state:guard.state,hypothesis:guard.hypothesis,rationale:guard.rationale,sql:guard.sql,result_rows}}];"
+      },
+      "notes": "Gom tối đa 200 dòng query cùng state để Evaluator đọc một lần."
+    },
+    {
+      "id": "node-lm-rca-evaluator",
+      "name": "OpenAI Model - RCA Evaluator",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        4120,
+        380
+      ],
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "node-rca-evaluator",
+      "name": "RCA Evaluator",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        4120,
+        180
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Kết quả kiểm chứng:\n{{ JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "Bạn là RCA Evaluator. Đánh giá query result có ủng hộ hypothesis hay không. Chỉ kết luận theo số trong result_rows; phân biệt tương quan và nguyên nhân. Nếu chưa đủ, đề xuất điều cần kiểm chứng tiếp. Trả JSON thuần, không markdown: {\"finding\":\"[Hiện tượng] → [kết luận có số liệu]\",\"continue\":true|false,\"reason\":\"...\"}. Đặt continue=false khi đã có kết luận hữu ích hoặc không còn hướng kiểm chứng an toàn. Không nhắc revenue/doanh thu."
+        }
+      },
+      "notes": "AI đọc kết quả query và quyết định có lặp tiếp hay không."
+    },
+    {
+      "id": "node-normalize-eval",
+      "name": "Normalize RCA Evaluation",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4340,
+        180
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "function parse(v){ if(typeof v==='object')return v; let s=String(v||'').trim(); const fence=String.fromCharCode(96).repeat(3); if(s.startsWith(fence)) s=s.slice(3).replace(/^json/i,'').trim(); if(s.endsWith(fence)) s=s.slice(0,-3).trim(); return JSON.parse(s); } let input; try{ input=$('Aggregate RCA Results').item.json; }catch(e){ input=$('Aggregate RCA Results').first().json; } let ev; try{ ev=parse($json.output||$json.text||$json); }catch(e){ ev={finding:'Không đọc được đánh giá RCA: '+e.message,continue:false,reason:'Evaluator trả JSON lỗi'}; } const state=input.state||{}; const history=[...(state.history||[]),{iteration:state.iteration,hypothesis:input.hypothesis,sql:input.sql,result_rows:input.result_rows,finding:ev.finding||'',reason:ev.reason||'',sql_valid:true}]; const should=Boolean(ev.continue)&&Number(state.iteration||1)<Number(state.max_loops||3); return [{json:{...state,iteration:Number(state.iteration||1)+1,invalid_streak:0,history,should_continue:should}}];"
+      },
+      "notes": "Cập nhật accumulator sau một query hợp lệ."
+    },
+    {
+      "id": "node-record-guardrail-failure",
+      "name": "Record Guardrail Failure",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3680,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const g=$json; const s=g.state||{}; const streak=Number(s.invalid_streak||0)+1; const history=[...(s.history||[]),{iteration:s.iteration,hypothesis:g.hypothesis||'',sql:g.sql||'',finding:'SQL bị guardrail từ chối: '+(g.guardrail_reason||'không rõ'),reason:g.guardrail_reason||'',sql_valid:false}]; const should=streak<2&&Number(s.iteration||1)<Number(s.max_loops||3); return [{json:{...s,iteration:Number(s.iteration||1)+1,invalid_streak:streak,history,should_continue:should}}];"
+      },
+      "notes": "Dừng sau 2 lỗi guardrail liên tiếp hoặc khi hết vòng."
+    },
+    {
+      "id": "node-continue-rca",
+      "name": "Continue RCA?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        4560,
+        300
+      ],
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict"
+          },
+          "conditions": [
+            {
+              "id": "node-continue-rca-condition",
+              "leftValue": "={{ $json.should_continue }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "notes": "True quay lại Planner; false tổng hợp findings."
+    },
+    {
+      "id": "node-rca-finalizer",
+      "name": "RCA Finalizer",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        4780,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const history=$json.history||[]; const findings=history.filter(h=>h.sql_valid&&h.finding).map(h=>'- '+h.finding); const failures=history.filter(h=>!h.sql_valid).length; let text=findings.length?findings.join('\\n'):'- Chưa đủ dữ liệu để kết luận nguyên nhân; cần kiểm tra thủ công.'; if(failures) text+='\\n- Ghi chú kỹ thuật: '+failures+' truy vấn bị guardrail từ chối và không được chạy.'; return [{json:{root_cause_text:text,history,payload:$json.payload,brief_text:$json.brief_text}}];"
+      },
+      "notes": "Tổng hợp finding có bằng chứng thành khối AI ANALYZE."
+    },
+    {
+      "id": "node-lm-advisor",
+      "name": "OpenAI Model - Advisor",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        5000,
+        620
+      ],
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": {
+          "temperature": 0.4
+        }
+      },
+      "credentials": {
+        "openAiApi": {
+          "id": "",
+          "name": "OpenAI account"
+        }
+      }
+    },
+    {
+      "id": "node-agent-3",
+      "name": "Agent 3 - Action Advisor",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        5000,
+        420
+      ],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Brief:\n{{ $('Agent 1 - Brief Writer').first().json.output || \"\" }}\n\nRoot cause đã kiểm chứng:\n{{ $json.root_cause_text }}\n\nWarnings:\n{{ JSON.stringify($('Build Payload').first().json.warnings || []) }}",
+        "options": {
+          "systemMessage": "Đề xuất tối đa 3 hành động cụ thể dựa trên root cause đã kiểm chứng và warning. Mỗi hành động ghi việc làm, owner/bộ phận phù hợp, kết quả đo được và thời hạn. Nếu root cause chưa đủ dữ liệu, đề xuất bước kiểm tra thay vì bịa nguyên nhân. Với Weekly Performance, ưu tiên tuần tới; với daily, ưu tiên hôm nay. Không nhắc revenue/doanh thu."
+        }
+      },
+      "notes": "Action Advisor dùng kết quả RCA thật thay vì warning thô."
+    },
+    {
+      "id": "node-assemble",
+      "name": "Assemble Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        5220,
+        420
+      ],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const payload=$('Build Payload').first().json; const writer=$('Agent 1 - Brief Writer').first().json.output||$('Agent 1 - Brief Writer').first().json.text||''; const root=$('RCA Finalizer').first().json.root_cause_text||''; const advisor=$json.output||$json.text||''; const title=payload.report_mode==='weekly'?'📅 WEEKLY PERFORMANCE - '+payload.report_date:'☀️ DAILY 5 MINUTES BRIEF - '+payload.weekday_label+', '+payload.report_date; const finalText=title+'\\n\\n'+writer+'\\n\\n🔍 AI ANALYZE\\n'+root+'\\n\\n🎯 SUGGESTED ACTION\\n'+advisor; return [{json:{run_id:payload.run_id,report_date:payload.report_date,sent_at:new Date().toISOString(),query_results:JSON.stringify({...payload,rca_history:$('RCA Finalizer').first().json.history||[]}),agent_output:finalText,status:'success',error_message:null}}];"
+      },
+      "notes": "Ghép Writer + RCA findings + Advisor cho daily/weekly."
+    },
+    {
+      "id": "node-final-brief",
+      "name": "Final Brief",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [
+        5440,
+        260
+      ],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            {
+              "id": "a1",
+              "name": "final_brief_text",
+              "type": "string",
+              "value": "={{ $json.agent_output }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Neu Set node bao loi schema, doi tam sang Code node tra ve { final_brief_text: $json.agent_output }."
+    },
+    {
+      "id": "node-log-run",
+      "name": "Log Run",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        5660,
+        260
+      ],
+      "parameters": {
+        "operation": "insert",
+        "projectId": "tmdatabase",
+        "datasetId": "dm_daily_brief",
+        "tableId": "brief_run_log",
+        "options": {}
+      },
+      "notes": "Ghi 1 dong vao brief_run_log. Input lay tu Assemble Brief (field da dat dung ten cot). Bat 'Map Automatically' trong UI neu co tuy chon."
+    },
+    {
+      "id": "node-send-base",
+      "name": "Send to Base.vn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        5880,
+        260
+      ],
+      "disabled": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://REPLACE-WITH-BASE-VN-WEBHOOK-URL",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { text: $('Final Brief').first().json.final_brief_text } }}",
+        "options": {}
+      },
+      "notes": "DISABLED theo dung SPEC v1 - chi dien webhook URL that va bo tick 'disabled' khi san sang gui that."
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Resolve Day",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Day": {
+      "main": [
+        [
+          {
+            "node": "Is Sunday?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Sunday?": {
+      "main": [
+        [
+          {
+            "node": "Sunday Message Writer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Saturday?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sunday Message Writer": {
+      "main": [
+        [
+          {
+            "node": "Assemble Sunday Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Sunday Message": {
+      "main": [
+        [
+          {
+            "node": "Final Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Saturday?": {
+      "main": [
+        [
+          {
+            "node": "Q7 Weekly Performance",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Q0 Data Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q7 Weekly Performance": {
+      "main": [
+        [
+          {
+            "node": "Q7 Content Performance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q7 Content Performance": {
+      "main": [
+        [
+          {
+            "node": "Q7 Warning Snapshot",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q7 Warning Snapshot": {
+      "main": [
+        [
+          {
+            "node": "Q7 Weekly Data Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q7 Weekly Data Health": {
+      "main": [
+        [
+          {
+            "node": "Build Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q0 Data Health": {
+      "main": [
+        [
+          {
+            "node": "Q1 KPI",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q1 KPI": {
+      "main": [
+        [
+          {
+            "node": "Q2 Breakdown",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q2 Breakdown": {
+      "main": [
+        [
+          {
+            "node": "Q3 UTM Daily",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q3 UTM Daily": {
+      "main": [
+        [
+          {
+            "node": "Q4 No-Lead Courses",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q4 No-Lead Courses": {
+      "main": [
+        [
+          {
+            "node": "Q5 Warning Scan",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q5 Warning Scan": {
+      "main": [
+        [
+          {
+            "node": "Q6 Focus Group",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q6 Focus Group": {
+      "main": [
+        [
+          {
+            "node": "Build Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Payload": {
+      "main": [
+        [
+          {
+            "node": "Agent 1 - Brief Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 1 - Brief Writer": {
+      "main": [
+        [
+          {
+            "node": "RCA Init",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RCA Init": {
+      "main": [
+        [
+          {
+            "node": "RCA Planner",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RCA Planner": {
+      "main": [
+        [
+          {
+            "node": "RCA SQL Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RCA SQL Writer": {
+      "main": [
+        [
+          {
+            "node": "SQL Guardrail",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "SQL Guardrail": {
+      "main": [
+        [
+          {
+            "node": "Is SQL Valid?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is SQL Valid?": {
+      "main": [
+        [
+          {
+            "node": "BigQuery Execute RCA",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Record Guardrail Failure",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "BigQuery Execute RCA": {
+      "main": [
+        [
+          {
+            "node": "Aggregate RCA Results",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Aggregate RCA Results": {
+      "main": [
+        [
+          {
+            "node": "RCA Evaluator",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RCA Evaluator": {
+      "main": [
+        [
+          {
+            "node": "Normalize RCA Evaluation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize RCA Evaluation": {
+      "main": [
+        [
+          {
+            "node": "Continue RCA?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Record Guardrail Failure": {
+      "main": [
+        [
+          {
+            "node": "Continue RCA?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Continue RCA?": {
+      "main": [
+        [
+          {
+            "node": "RCA Planner",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "RCA Finalizer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "RCA Finalizer": {
+      "main": [
+        [
+          {
+            "node": "Agent 3 - Action Advisor",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Agent 3 - Action Advisor": {
+      "main": [
+        [
+          {
+            "node": "Assemble Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Brief": {
+      "main": [
+        [
+          {
+            "node": "Final Brief",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Brief": {
+      "main": [
+        [
+          {
+            "node": "Log Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Run": {
+      "main": [
+        [
+          {
+            "node": "Send to Base.vn",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model - Writer": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 1 - Brief Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model - Sunday": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Sunday Message Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model - RCA Planner": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RCA Planner",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model - RCA SQL": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RCA SQL Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model - RCA Evaluator": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "RCA Evaluator",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model - Advisor": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Agent 3 - Action Advisor",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh"
+  }
+}

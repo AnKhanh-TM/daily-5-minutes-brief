@@ -1,0 +1,918 @@
+{
+  "name": "Daily 5 Minutes Brief v3.1",
+  "nodes": [
+    {
+      "parameters": {
+        "rule": {
+          "interval": [
+            {
+              "field": "cronExpression",
+              "expression": "30 7 * * *"
+            }
+          ]
+        }
+      },
+      "id": "0ac54e42-b622-40fc-8bfa-4a540447907b",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [
+        -1500,
+        400
+      ],
+      "notes": "07:30 ICT mỗi ngày. Có thể sửa cron sau trong node này."
+    },
+    {
+      "parameters": {},
+      "id": "50f19abd-9acf-47bd-abec-bc8aa51621e5",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [
+        -1500,
+        560
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{\n  json: {\n    schema_version: '3.1',\n    gcp_project: 'tmdatabase',\n    bq_dataset: 'dm_base_crm',\n    config_dataset: 'tmdatabase.dm_daily_brief',\n    timezone: 'Asia/Ho_Chi_Minh',\n\n    // Tat ca gia tri duoi day co the sua sau khi chay thu.\n    thresholds: {\n      kpi_normal_band_pct: 10,\n      trend_direction_pct: 10,\n      warning_zero_lead_days: 5,\n      min_base_volume: 3,\n      cvr_direction_pp: 5,\n      weekly_min_content_leads: 3,\n      weekly_min_course_leads: 3,\n      weekly_min_course_closed: 3,\n      history_no_lead_days: 10,\n      warning_open_deal_days: 14,\n      warning_open_deal_min: 5,\n      unmapped_alert_min: 3,\n      unmapped_alert_rate_pct: 5,\n    },\n\n    limits: {\n      daily_priority_limit: 3,\n      weekly_priority_limit: 3,\n      weekly_content_top_n: 5,\n      weekly_content_query_rows: 100,\n    },\n\n    features: {\n      enable_weekly_stale_open: false,\n      show_daily_data_health_alert: true,\n      show_weekly_data_health_alert: true,\n    },\n\n    openai_model: 'gpt-4.1',\n  },\n}];"
+      },
+      "id": "2c71da9c-f785-4b46-861c-cbf61fc9d1d3",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1260,
+        480
+      ],
+      "notes": "Config v3.1 — Daily normal band dùng kpi_normal_band_pct = 10; các threshold Weekly giữ nguyên."
+    },
+    {
+      "parameters": {
+        "jsCode": "function vnParts(date) {\n  const formatter = new Intl.DateTimeFormat('en-CA', {\n    timeZone: 'Asia/Ho_Chi_Minh',\n    year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short',\n  });\n  const parts = formatter.formatToParts(date);\n  const get = (type) => parts.find((part) => part.type === type)?.value || '';\n  return { year: get('year'), month: get('month'), day: get('day'), weekday: get('weekday') };\n}\n\nfunction addDays(isoDate, days) {\n  const date = new Date(isoDate + 'T00:00:00Z');\n  date.setUTCDate(date.getUTCDate() + days);\n  return date.toISOString().slice(0, 10);\n}\n\nfunction compactDate(isoDate) {\n  return isoDate.slice(8, 10) + '/' + isoDate.slice(5, 7);\n}\n\nfunction uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (char) => {\n    const value = Math.floor(Math.random() * 16);\n    return (char === 'x' ? value : (value & 3) | 8).toString(16);\n  });\n}\n\nconst now = new Date();\nconst vn = vnParts(now);\nconst runDate = vn.year + '-' + vn.month + '-' + vn.day;\nconst weekdayMap = { Mon: 2, Tue: 3, Wed: 4, Thu: 5, Fri: 6, Sat: 7, Sun: 0 };\nconst reportDay = weekdayMap[vn.weekday];\nconst reportDate = addDays(runDate, -1);\nconst isSaturday = reportDay === 7;\nconst isSunday = reportDay === 0;\n\nconst weekdayLabels = {\n  0: 'Chủ Nhật', 2: 'Thứ Hai', 3: 'Thứ Ba', 4: 'Thứ Tư',\n  5: 'Thứ Năm', 6: 'Thứ Sáu', 7: 'Thứ Bảy',\n};\n\nconst display = {\n  2: { title: '📚 MARKETING ENTRY MONDAY', focus: 'MARKETING' },\n  3: { title: '📣 MARKETING GROWTH TUESDAY', focus: 'MARKETING GROWTH' },\n  4: { title: '🧠 EXECUTIVE WEDNESDAY', focus: 'EXECUTIVE' },\n  5: { title: '📊 DATA THURSDAY', focus: 'DATA' },\n  6: { title: '🤖 AI FRIDAY', focus: 'AI' },\n};\n\nconst periods = {\n  curr7_start: addDays(reportDate, -6), curr7_end: reportDate,\n  prev7_start: addDays(reportDate, -13), prev7_end: addDays(reportDate, -7),\n  prev30_start: addDays(reportDate, -36), prev30_end: addDays(reportDate, -7),\n  prev90_start: addDays(reportDate, -96), prev90_end: addDays(reportDate, -7),\n  week_curr_start: addDays(runDate, -5), week_curr_end: addDays(runDate, -1),\n  week_prev_start: addDays(runDate, -12), week_prev_end: addDays(runDate, -8),\n  trend_curr7_start: addDays(reportDate, -6), trend_curr7_end: reportDate,\n};\n\nreturn [{ json: {\n  run_id: uuidv4(),\n  run_date: runDate,\n  run_date_display: compactDate(runDate),\n  report_date: reportDate,\n  report_date_display: compactDate(reportDate),\n  report_day: reportDay,\n  report_mode: isSunday ? 'sunday' : (isSaturday ? 'weekly' : 'daily'),\n  is_saturday: isSaturday,\n  is_sunday: isSunday,\n  weekday_label: weekdayLabels[reportDay] || '',\n  daily_display_title: display[reportDay]?.title || '',\n  focus_group_label: display[reportDay]?.focus || '',\n  week_label: compactDate(periods.week_curr_start) + '–' + compactDate(periods.week_curr_end),\n  previous_week_label: compactDate(periods.week_prev_start) + '–' + compactDate(periods.week_prev_end),\n  periods,\n} }];"
+      },
+      "id": "cb8efb88-0b01-40e7-9b14-947e0c4c858a",
+      "name": "Resolve Calendar",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -1020,
+        480
+      ],
+      "notes": "Tính run_date, report_date và toàn bộ window từ runtime thật."
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "node-is-sunday-condition",
+              "leftValue": "={{ $('Resolve Calendar').first().json.is_sunday }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "43972c3f-dd19-484c-8e6e-7866114950d5",
+      "name": "Is Sunday?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -780,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "conditions": {
+          "options": {
+            "caseSensitive": true,
+            "leftValue": "",
+            "typeValidation": "strict",
+            "version": 1
+          },
+          "conditions": [
+            {
+              "id": "cond-saturday",
+              "leftValue": "={{ $('Resolve Calendar').first().json.is_saturday }}",
+              "rightValue": true,
+              "operator": {
+                "type": "boolean",
+                "operation": "true",
+                "singleValue": true
+              }
+            }
+          ],
+          "combinator": "and"
+        },
+        "options": {}
+      },
+      "id": "dc1a4615-8d7a-4ed5-b64e-08f2301d9cb3",
+      "name": "Is Saturday?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [
+        -500,
+        600
+      ]
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Ngày chạy: {{ $('Resolve Calendar').first().json.run_date }}",
+        "options": {
+          "systemMessage": "Viết đúng 1 câu tiếng Việt, tối đa 40 từ, vui nhẹ và có động lực. Không KPI, khóa học, warning, data health, giao việc hoặc xuống dòng."
+        }
+      },
+      "id": "6c048d4b-5772-4a94-8583-54886c7a54a5",
+      "name": "Sunday Message Writer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        -500,
+        160
+      ],
+      "notes": "Sunday-only."
+    },
+    {
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": {
+          "temperature": 0.9
+        }
+      },
+      "id": "891661e6-dd69-42ba-91ca-52aeaa36893f",
+      "name": "OpenAI Model - Sunday",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        -500,
+        0
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "Xsb20kZqsvL7Fz75",
+          "name": "OpenAI account TM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const rd = $('Resolve Calendar').first().json;\nconst text = String($json.output || $json.text || '').trim();\nreturn [{ json: {\n  run_id: rd.run_id,\n  report_date: rd.report_date,\n  sent_at: new Date().toISOString(),\n  query_results: JSON.stringify({ schema_version: '3.1', report_mode: 'sunday', run_date: rd.run_date, report_date: rd.report_date }),\n  agent_output: text,\n  status: 'success',\n  error_message: null,\n} }];"
+      },
+      "id": "20ec5367-32b0-4094-a83f-f81c90c5ab90",
+      "name": "Assemble Sunday",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        160
+      ]
+    },
+    {
+      "parameters": {
+        "projectId": "tmdatabase",
+        "sqlQuery": "WITH\nparams AS (\n  SELECT\n    DATE('{{ $('Resolve Calendar').first().json.report_date }}') AS report_date,\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.report_date }}')) AS day_start,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.report_date }}'), INTERVAL 1 DAY)) AS day_end\n),\n\ncourse_map AS (\n  SELECT DISTINCT\n    LOWER(TRIM(REGEXP_REPLACE(course_key, r'\\s+', ' '))) AS raw_key\n  FROM `tmdatabase.dm_daily_brief.dim_course`\n  WHERE course_key IS NOT NULL AND TRIM(course_key) != ''\n\n  UNION DISTINCT\n\n  SELECT DISTINCT\n    LOWER(TRIM(REGEXP_REPLACE(alias, r'\\s+', ' '))) AS raw_key\n  FROM `tmdatabase.dm_daily_brief.dim_course`,\n  UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS alias\n  WHERE course_key IS NOT NULL AND TRIM(course_key) != '' AND TRIM(alias) != ''\n),\n\ndaily_leads AS (\n  SELECT\n    d.deal_id,\n    d.selected_course,\n    LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.created_at >= p.day_start\n    AND d.created_at < p.day_end\n),\n\ntotals AS (\n  SELECT COUNT(DISTINCT deal_id) AS total_leads\n  FROM daily_leads\n),\n\nissues AS (\n  SELECT\n    l.deal_id,\n    l.selected_course,\n    CASE WHEN l.raw_key = '' THEN 'MISSING_COURSE' ELSE 'UNMAPPED_COURSE' END AS mapping_status\n  FROM daily_leads l\n  LEFT JOIN course_map m ON m.raw_key = l.raw_key AND l.raw_key != ''\n  WHERE l.raw_key = '' OR m.raw_key IS NULL\n),\n\nsummary AS (\n  SELECT\n    mapping_status,\n    CASE WHEN mapping_status = 'MISSING_COURSE' THEN NULL ELSE selected_course END AS selected_course_raw,\n    COUNT(DISTINCT deal_id) AS issue_count\n  FROM issues\n  GROUP BY mapping_status, selected_course_raw\n)\n\nSELECT\n  IFNULL(s.mapping_status, 'OK') AS mapping_status,\n  s.selected_course_raw,\n  IFNULL(s.issue_count, 0) AS issue_count,\n  t.total_leads\nFROM totals t\nLEFT JOIN summary s ON TRUE\nORDER BY issue_count DESC, mapping_status;",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "7ab00f2f-4981-439c-a692-88d0d5a2c0ba",
+      "name": "Q0 Daily Data Health",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        820
+      ],
+      "credentials": {
+        "googleBigQueryOAuth2Api": {
+          "id": "WKvomt3Li5hixb1H",
+          "name": "Google BigQuery account 2"
+        }
+      },
+      "notes": "Daily mapping quality. SQL chia CTE rõ ràng."
+    },
+    {
+      "parameters": {
+        "projectId": "tmdatabase",
+        "sqlQuery": "WITH\nparams AS (\n  SELECT\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.report_date }}')) AS report_start,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.report_date }}'), INTERVAL 1 DAY)) AS report_end,\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.curr7_start }}')) AS curr_start,\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.prev7_start }}')) AS prev_start,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.periods.prev7_end }}'), INTERVAL 1 DAY)) AS prev_end\n),\n\nlead_metrics AS (\n  SELECT\n    COUNT(DISTINCT IF(d.created_at >= p.report_start AND d.created_at < p.report_end, d.deal_id, NULL)) AS leads_yesterday,\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.report_end, d.deal_id, NULL)) AS leads_curr,\n    COUNT(DISTINCT IF(d.created_at >= p.prev_start AND d.created_at < p.prev_end, d.deal_id, NULL)) AS leads_prev,\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.report_end AND d.stage_id IN (224,264,267,268,265,92,91,227,228,225,229,226,220,221,217,222,218,219,75,76,73,74,79,80,1328,1329,1330,1331,1332), d.deal_id, NULL)) AS mql_curr,\n    COUNT(DISTINCT IF(d.created_at >= p.prev_start AND d.created_at < p.prev_end AND d.stage_id IN (224,264,267,268,265,92,91,227,228,225,229,226,220,221,217,222,218,219,75,76,73,74,79,80,1328,1329,1330,1331,1332), d.deal_id, NULL)) AS mql_prev,\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.report_end AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,218,219,75,76,74,80,1329,1330,1331,1332), d.deal_id, NULL)) AS discovery_curr,\n    COUNT(DISTINCT IF(d.created_at >= p.prev_start AND d.created_at < p.prev_end AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,218,219,75,76,74,80,1329,1330,1331,1332), d.deal_id, NULL)) AS discovery_prev,\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.report_end AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,219,75,76,1330,1331,1332), d.deal_id, NULL)) AS needfit_curr,\n    COUNT(DISTINCT IF(d.created_at >= p.prev_start AND d.created_at < p.prev_end AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,219,75,76,1330,1331,1332), d.deal_id, NULL)) AS needfit_prev\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.created_at >= p.prev_start AND d.created_at < p.report_end\n),\n\noutcome_metrics AS (\n  SELECT\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.report_start AND d.closed_at < p.report_end, d.deal_id, NULL)) AS won_yesterday,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.curr_start AND d.closed_at < p.report_end, d.deal_id, NULL)) AS won_curr,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.prev_start AND d.closed_at < p.prev_end, d.deal_id, NULL)) AS won_prev,\n    COUNT(DISTINCT IF(d.deal_status = 'lost' AND d.closed_at >= p.curr_start AND d.closed_at < p.report_end, d.deal_id, NULL)) AS lost_curr,\n    COUNT(DISTINCT IF(d.deal_status = 'lost' AND d.closed_at >= p.prev_start AND d.closed_at < p.prev_end, d.deal_id, NULL)) AS lost_prev\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.deal_status IN ('won', 'lost')\n    AND d.closed_at >= p.prev_start AND d.closed_at < p.report_end\n)\n\nSELECT\n  l.*,\n  o.*,\n  ROUND(l.leads_curr / 7.0, 2) AS leads_avg_curr,\n  ROUND(l.leads_prev / 7.0, 2) AS leads_avg_prev,\n  ROUND(SAFE_DIVIDE(l.leads_curr - l.leads_prev, NULLIF(l.leads_prev, 0)) * 100, 1) AS leads_pct_change,\n  ROUND(l.mql_curr / 7.0, 2) AS mql_avg_curr,\n  ROUND(l.mql_prev / 7.0, 2) AS mql_avg_prev,\n  ROUND(SAFE_DIVIDE(l.mql_curr - l.mql_prev, NULLIF(l.mql_prev, 0)) * 100, 1) AS mql_pct_change,\n  ROUND(l.discovery_curr / 7.0, 2) AS discovery_avg_curr,\n  ROUND(l.discovery_prev / 7.0, 2) AS discovery_avg_prev,\n  ROUND(SAFE_DIVIDE(l.discovery_curr - l.discovery_prev, NULLIF(l.discovery_prev, 0)) * 100, 1) AS discovery_pct_change,\n  ROUND(l.needfit_curr / 7.0, 2) AS needfit_avg_curr,\n  ROUND(l.needfit_prev / 7.0, 2) AS needfit_avg_prev,\n  ROUND(SAFE_DIVIDE(l.needfit_curr - l.needfit_prev, NULLIF(l.needfit_prev, 0)) * 100, 1) AS needfit_pct_change,\n  ROUND(o.won_curr / 7.0, 2) AS won_avg_curr,\n  ROUND(o.won_prev / 7.0, 2) AS won_avg_prev,\n  ROUND(SAFE_DIVIDE(o.won_curr - o.won_prev, NULLIF(o.won_prev, 0)) * 100, 1) AS won_pct_change,\n  ROUND(o.lost_curr / 7.0, 2) AS lost_avg_curr,\n  ROUND(o.lost_prev / 7.0, 2) AS lost_avg_prev,\n  ROUND(SAFE_DIVIDE(o.lost_curr - o.lost_prev, NULLIF(o.lost_prev, 0)) * 100, 1) AS lost_pct_change,\n  ROUND(SAFE_DIVIDE(o.won_curr, o.won_curr + o.lost_curr) * 100, 1) AS cvr_curr,\n  ROUND(SAFE_DIVIDE(o.won_prev, o.won_prev + o.lost_prev) * 100, 1) AS cvr_prev,\n  ROUND((SAFE_DIVIDE(o.won_curr, o.won_curr + o.lost_curr) - SAFE_DIVIDE(o.won_prev, o.won_prev + o.lost_prev)) * 100, 1) AS cvr_change_pp\nFROM lead_metrics l\nCROSS JOIN outcome_metrics o;",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "bbc8a2c6-07e8-43e1-ab21-48c34f53cd19",
+      "name": "Q1 Daily Overall Funnel",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        40,
+        820
+      ],
+      "credentials": {
+        "googleBigQueryOAuth2Api": {
+          "id": "WKvomt3Li5hixb1H",
+          "name": "Google BigQuery account 2"
+        }
+      },
+      "notes": "Daily funnel 3 tầng; Lead/MQL/SQL theo created_at, Won/Lost/CVR theo closed_at."
+    },
+    {
+      "parameters": {
+        "projectId": "tmdatabase",
+        "sqlQuery": "WITH\nparams AS (\n  SELECT\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.curr7_start }}')) AS curr_start,\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.prev7_start }}')) AS prev7_start,\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.prev30_start }}')) AS prev30_start,\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.prev90_start }}')) AS prev90_start,\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.curr7_start }}')) AS baseline_end,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.report_date }}'), INTERVAL 1 DAY)) AS report_end\n),\n\nactive_courses AS (\n  SELECT\n    course_key,\n    course_name,\n    course_type,\n    report_day,\n    aliases\n  FROM \\`tmdatabase.dm_daily_brief.dim_course\\`\n  WHERE is_active = TRUE\n    AND course_key IS NOT NULL\n    AND TRIM(course_key) != ''\n),\n\ncourse_map AS (\n  SELECT DISTINCT\n    LOWER(TRIM(REGEXP_REPLACE(course_key, r'\\s+', ' '))) AS raw_key,\n    course_key\n  FROM active_courses\n\n  UNION DISTINCT\n\n  SELECT DISTINCT\n    LOWER(TRIM(REGEXP_REPLACE(alias, r'\\s+', ' '))) AS raw_key,\n    course_key\n  FROM active_courses,\n  UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS alias\n  WHERE TRIM(alias) != ''\n),\n\nscope AS (\n  SELECT\n    course_key,\n    course_name,\n    course_type\n  FROM active_courses\n  WHERE report_day = {{ $('Resolve Calendar').first().json.report_day }}\n),\n\ncreated_metrics AS (\n  SELECT\n    m.course_key,\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.report_end, d.deal_id, NULL)) AS lead_n_curr7,\n    COUNT(DISTINCT IF(d.created_at >= p.prev7_start AND d.created_at < p.baseline_end, d.deal_id, NULL)) AS lead_n_prev7,\n    COUNT(DISTINCT IF(d.created_at >= p.prev30_start AND d.created_at < p.baseline_end, d.deal_id, NULL)) AS lead_n_prev30,\n    COUNT(DISTINCT IF(d.created_at >= p.prev90_start AND d.created_at < p.baseline_end, d.deal_id, NULL)) AS lead_n_prev90,\n\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.report_end\n      AND d.stage_id IN (224,264,267,268,265,92,91,227,228,225,229,226,220,221,217,222,218,219,75,76,73,74,79,80,1328,1329,1330,1331,1332), d.deal_id, NULL)) AS mql_n_curr7,\n    COUNT(DISTINCT IF(d.created_at >= p.prev7_start AND d.created_at < p.baseline_end\n      AND d.stage_id IN (224,264,267,268,265,92,91,227,228,225,229,226,220,221,217,222,218,219,75,76,73,74,79,80,1328,1329,1330,1331,1332), d.deal_id, NULL)) AS mql_n_prev7,\n\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.report_end\n      AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,218,219,75,76,74,80,1329,1330,1331,1332), d.deal_id, NULL)) AS discovery_n_curr7,\n    COUNT(DISTINCT IF(d.created_at >= p.prev7_start AND d.created_at < p.baseline_end\n      AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,218,219,75,76,74,80,1329,1330,1331,1332), d.deal_id, NULL)) AS discovery_n_prev7,\n\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.report_end\n      AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,219,75,76,1330,1331,1332), d.deal_id, NULL)) AS needfit_n_curr7,\n    COUNT(DISTINCT IF(d.created_at >= p.prev7_start AND d.created_at < p.baseline_end\n      AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,219,75,76,1330,1331,1332), d.deal_id, NULL)) AS needfit_n_prev7,\n\n    MAX(IF(d.created_at < p.report_end, DATE(d.created_at), NULL)) AS last_lead_date\n  FROM \\`tmdatabase.dm_base_crm.deals\\` d\n  CROSS JOIN params p\n  INNER JOIN course_map m\n    ON m.raw_key = LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' ')))\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.created_at < p.report_end\n  GROUP BY m.course_key\n),\n\nclosed_metrics AS (\n  SELECT\n    m.course_key,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.curr_start AND d.closed_at < p.report_end, d.deal_id, NULL)) AS won_n_curr7,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.prev7_start AND d.closed_at < p.baseline_end, d.deal_id, NULL)) AS won_n_prev7,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.prev30_start AND d.closed_at < p.baseline_end, d.deal_id, NULL)) AS won_n_prev30,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.prev90_start AND d.closed_at < p.baseline_end, d.deal_id, NULL)) AS won_n_prev90,\n    COUNT(DISTINCT IF(d.deal_status = 'lost' AND d.closed_at >= p.curr_start AND d.closed_at < p.report_end, d.deal_id, NULL)) AS lost_n_curr7,\n    COUNT(DISTINCT IF(d.deal_status = 'lost' AND d.closed_at >= p.prev7_start AND d.closed_at < p.baseline_end, d.deal_id, NULL)) AS lost_n_prev7\n  FROM \\`tmdatabase.dm_base_crm.deals\\` d\n  CROSS JOIN params p\n  INNER JOIN course_map m\n    ON m.raw_key = LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' ')))\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.deal_status IN ('won', 'lost')\n    AND d.closed_at >= p.prev90_start\n    AND d.closed_at < p.report_end\n  GROUP BY m.course_key\n)\n\nSELECT\n  s.course_key,\n  s.course_name,\n  s.course_type,\n  IFNULL(c.lead_n_curr7, 0) AS lead_n_curr7,\n  IFNULL(c.lead_n_prev7, 0) AS lead_n_prev7,\n  IFNULL(c.lead_n_prev30, 0) AS lead_n_prev30,\n  IFNULL(c.lead_n_prev90, 0) AS lead_n_prev90,\n  IFNULL(c.mql_n_curr7, 0) AS mql_n_curr7,\n  IFNULL(c.mql_n_prev7, 0) AS mql_n_prev7,\n  IFNULL(c.discovery_n_curr7, 0) AS discovery_n_curr7,\n  IFNULL(c.discovery_n_prev7, 0) AS discovery_n_prev7,\n  IFNULL(c.needfit_n_curr7, 0) AS needfit_n_curr7,\n  IFNULL(c.needfit_n_prev7, 0) AS needfit_n_prev7,\n  IFNULL(o.won_n_curr7, 0) AS won_n_curr7,\n  IFNULL(o.won_n_prev7, 0) AS won_n_prev7,\n  IFNULL(o.won_n_prev30, 0) AS won_n_prev30,\n  IFNULL(o.won_n_prev90, 0) AS won_n_prev90,\n  IFNULL(o.lost_n_curr7, 0) AS lost_n_curr7,\n  IFNULL(o.lost_n_prev7, 0) AS lost_n_prev7,\n  c.last_lead_date,\n  IF(c.last_lead_date IS NULL, NULL,\n    DATE_DIFF(DATE('{{ $('Resolve Calendar').first().json.report_date }}'), c.last_lead_date, DAY)) AS days_no_lead,\n  c.last_lead_date IS NOT NULL AS has_ever_had_lead\nFROM scope s\nLEFT JOIN created_metrics c USING (course_key)\nLEFT JOIN closed_metrics o USING (course_key)\nORDER BY s.course_name;",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "7fefbee0-7357-452a-86a1-abd77e2ba093",
+      "name": "Q2 Daily Focus Trend",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        300,
+        820
+      ],
+      "credentials": {
+        "googleBigQueryOAuth2Api": {
+          "id": "WKvomt3Li5hixb1H",
+          "name": "Google BigQuery account 2"
+        }
+      },
+      "notes": "Daily course funnel v3.1: Lead/MQL/Discovery/Need-fit theo created_at; Won/Lost theo closed_at; baseline 30d/90d kết thúc trước current7."
+    },
+    {
+      "parameters": {
+        "jsCode": "function rows(name) {\n  return $(name).all().map((item) => item.json);\n}\n\nfunction number(value, fallback = 0) {\n  if (value === null || value === undefined || value === '') return fallback;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : fallback;\n}\n\nfunction bool(value) {\n  return value === true || String(value).toLowerCase() === 'true';\n}\n\nfunction round(value, digits = 2) {\n  const scale = 10 ** digits;\n  return Math.round((number(value) + Number.EPSILON) * scale) / scale;\n}\n\nfunction valueDisplay(value) {\n  return String(round(value, 2));\n}\n\nfunction pctDisplay(value) {\n  const rounded = round(value, 1);\n  return Number.isInteger(rounded) ? String(rounded) : String(rounded);\n}\n\nfunction compareCounts(currentCount, currentDays, baselineCount, baselineDays, bandPct) {\n  const current = number(currentCount);\n  const baseline = number(baselineCount);\n  const currentRate = current / currentDays;\n  const baselineRate = baseline / baselineDays;\n  const currentPd = round(currentRate, 2);\n  const baselinePd = round(baselineRate, 2);\n\n  if (baseline === 0 && current === 0) {\n    return {\n      current_count: current,\n      baseline_count: baseline,\n      current_pd: currentPd,\n      baseline_pd: baselinePd,\n      current_display: valueDisplay(currentPd),\n      baseline_display: valueDisplay(baselinePd),\n      change_pct: 0,\n      direction: 'flat',\n      change_display: '→0%',\n    };\n  }\n\n  if (baseline === 0 && current > 0) {\n    return {\n      current_count: current,\n      baseline_count: baseline,\n      current_pd: currentPd,\n      baseline_pd: baselinePd,\n      current_display: valueDisplay(currentPd),\n      baseline_display: valueDisplay(baselinePd),\n      change_pct: null,\n      direction: 'up',\n      change_display: '↑mới',\n    };\n  }\n\n  const changePct = round(((currentRate - baselineRate) / baselineRate) * 100, 1);\n  const direction = changePct > bandPct ? 'up' : (changePct < -bandPct ? 'down' : 'flat');\n  const arrow = direction === 'up' ? '↑' : (direction === 'down' ? '↓' : '→');\n  const shownPct = direction === 'flat' ? changePct : Math.abs(changePct);\n\n  return {\n    current_count: current,\n    baseline_count: baseline,\n    current_pd: currentPd,\n    baseline_pd: baselinePd,\n    current_display: valueDisplay(currentPd),\n    baseline_display: valueDisplay(baselinePd),\n    change_pct: changePct,\n    direction,\n    change_display: arrow + pctDisplay(shownPct) + '%',\n  };\n}\n\nfunction statusRank(status) {\n  return { red: 3, orange: 2, green: 1 }[status] || 0;\n}\n\nfunction buildCourse(row, cfg) {\n  const band = number(cfg.thresholds.kpi_normal_band_pct, 10);\n  const minVolume = number(cfg.thresholds.min_base_volume);\n\n  const funnel = {\n    lead: compareCounts(row.lead_n_curr7, 7, row.lead_n_prev7, 7, band),\n    mql: compareCounts(row.mql_n_curr7, 7, row.mql_n_prev7, 7, band),\n    discovery: compareCounts(row.discovery_n_curr7, 7, row.discovery_n_prev7, 7, band),\n    needfit: compareCounts(row.needfit_n_curr7, 7, row.needfit_n_prev7, 7, band),\n  };\n  const outcome = {\n    won: compareCounts(row.won_n_curr7, 7, row.won_n_prev7, 7, band),\n    lost: compareCounts(row.lost_n_curr7, 7, row.lost_n_prev7, 7, band),\n  };\n  const baseline = {\n    lead_30d: compareCounts(row.lead_n_curr7, 7, row.lead_n_prev30, 30, band),\n    lead_90d: compareCounts(row.lead_n_curr7, 7, row.lead_n_prev90, 90, band),\n    won_30d: compareCounts(row.won_n_curr7, 7, row.won_n_prev30, 30, band),\n    won_90d: compareCounts(row.won_n_curr7, 7, row.won_n_prev90, 90, band),\n  };\n\n  const funnelDirections = Object.values(funnel).map((metric) => metric.direction);\n  const funnelDownCount = funnelDirections.filter((value) => value === 'down').length;\n  const funnelUpCount = funnelDirections.filter((value) => value === 'up').length;\n  const lostAdverse = outcome.lost.direction === 'up';\n  const lostPositive = outcome.lost.direction === 'down';\n  const shortAdverseCount = funnelDownCount + Number(outcome.won.direction === 'down') + Number(lostAdverse);\n  const shortPositiveCount = funnelUpCount + Number(outcome.won.direction === 'up') + Number(lostPositive);\n  const longDirections = Object.values(baseline).map((metric) => metric.direction);\n  const longDownCount = longDirections.filter((value) => value === 'down').length;\n  const longUpCount = longDirections.filter((value) => value === 'up').length;\n  const hasEverLead = bool(row.has_ever_had_lead);\n  const daysNoLead = row.days_no_lead === null || row.days_no_lead === undefined ? null : number(row.days_no_lead);\n  const flagNoLead = hasEverLead && daysNoLead !== null\n    && daysNoLead >= number(cfg.thresholds.warning_zero_lead_days)\n    && number(row.lead_n_prev90) >= minVolume;\n\n  let status = 'orange';\n  if (funnelDownCount >= 3\n      || shortAdverseCount >= 4\n      || (outcome.won.direction === 'down' && lostAdverse)\n      || (flagNoLead && longDownCount >= 2)) {\n    status = 'red';\n  } else if (shortPositiveCount >= 3 && shortAdverseCount === 0\n      && longUpCount >= 2 && longDownCount === 0) {\n    status = 'green';\n  }\n\n  const acquisitionUp = funnel.lead.direction === 'up' || funnel.mql.direction === 'up';\n  const sqlDown = funnel.discovery.direction === 'down' || funnel.needfit.direction === 'down';\n  let insightCode = 'MIXED_SIGNALS';\n  if (flagNoLead) insightCode = 'NO_LEAD_LONG';\n  else if (funnelDownCount >= 3 && lostAdverse) insightCode = 'BROAD_FUNNEL_DOWN_LOST_UP';\n  else if (funnelDownCount >= 3) insightCode = 'BROAD_FUNNEL_DOWN';\n  else if (acquisitionUp && sqlDown) insightCode = 'ACQUISITION_UP_SQL_DOWN';\n  else if (shortPositiveCount >= 3 && longDownCount >= 2) insightCode = 'SHORT_UP_LONG_BELOW';\n  else if (status === 'green') insightCode = 'FUNNEL_OUTCOME_STRONG';\n  else if (outcome.won.direction === 'down' || lostAdverse) insightCode = 'OUTCOME_WEAK';\n  else if (shortAdverseCount === 0 && shortPositiveCount === 0) insightCode = 'STABLE';\n\n  const reasons = [];\n  if (funnelDownCount >= 3) reasons.push('FUNNEL_BROAD_DOWN');\n  if (acquisitionUp && sqlDown) reasons.push('ACQUISITION_UP_SQL_DOWN');\n  if (outcome.won.direction === 'down') reasons.push('WON_DOWN');\n  if (lostAdverse) reasons.push('LOST_UP');\n  if (longDownCount >= 2) reasons.push('BELOW_LONG_BASELINE');\n  if (longUpCount >= 2) reasons.push('ABOVE_LONG_BASELINE');\n  if (flagNoLead) reasons.push('NO_LEAD_' + daysNoLead + '_DAYS');\n\n  return {\n    course_key: row.course_key,\n    course_name: row.course_name,\n    course_type: row.course_type,\n    status,\n    status_icon: status === 'red' ? '🔴' : (status === 'green' ? '🟢' : '🟠'),\n    status_reason: reasons,\n    insight_code: insightCode,\n    funnel_7d: funnel,\n    outcome_7d: outcome,\n    baseline_30d_90d: baseline,\n    last_lead_date: row.last_lead_date || null,\n    days_no_lead: daysNoLead,\n    has_ever_had_lead: hasEverLead,\n    flag_no_lead: flagNoLead,\n    signal_counts: {\n      funnel_down: funnelDownCount,\n      funnel_up: funnelUpCount,\n      short_adverse: shortAdverseCount,\n      short_positive: shortPositiveCount,\n      long_down: longDownCount,\n      long_up: longUpCount,\n    },\n  };\n}\n\nfunction attentionCopy(course) {\n  const templates = {\n    BROAD_FUNNEL_DOWN_LOST_UP: {\n      signal_text: 'Funnel giảm toàn diện, Lost tăng.',\n      pic_check: 'PIC rà soát nguồn Lead, chất lượng MQL và các deal Lost trong 7 ngày gần nhất.',\n      next_action: 'Chốt 1–2 nguyên nhân chính và đề xuất kế hoạch phục hồi.',\n    },\n    BROAD_FUNNEL_DOWN: {\n      signal_text: 'Funnel suy yếu trên diện rộng.',\n      pic_check: 'PIC rà soát nguồn Lead và các điểm chuyển từ MQL sang Discovery, Need-fit trong 7 ngày gần nhất.',\n      next_action: 'Xác định điểm hụt lớn nhất và đề xuất bước phục hồi ưu tiên.',\n    },\n    ACQUISITION_UP_SQL_DOWN: {\n      signal_text: 'Acquisition phục hồi nhưng SQL chưa theo kịp.',\n      pic_check: 'PIC kiểm tra các Lead/MQL chưa chuyển sang Discovery hoặc Need-fit.',\n      next_action: 'Lập danh sách deal cần follow-up và xác định bước xử lý cho từng deal.',\n    },\n    NO_LEAD_LONG: {\n      signal_text: 'Không phát sinh Lead trong nhiều ngày dù trước đó có nhu cầu.',\n      pic_check: 'PIC kiểm tra nguồn Lead, tracking và tình trạng triển khai acquisition của khóa.',\n      next_action: 'Xác nhận nguyên nhân vận hành có thể kiểm chứng và chốt phương án khôi phục Lead.',\n    },\n    SHORT_UP_LONG_BELOW: {\n      signal_text: 'Current 7d phục hồi nhưng vẫn dưới mặt bằng 30d/90d.',\n      pic_check: 'PIC xác định nguồn cải thiện ngắn hạn và khoảng cách còn lại so với baseline dài hạn.',\n      next_action: 'Duy trì tín hiệu tốt và chốt một thử nghiệm để thu hẹp khoảng cách.',\n    },\n    FUNNEL_OUTCOME_STRONG: {\n      signal_text: 'Tín hiệu tích cực nhất trong nhóm.',\n      pic_check: 'PIC xác định nguồn và cách làm đang tạo kết quả tốt.',\n      next_action: 'Duy trì nhịp hiện tại, chia sẻ practice hiệu quả và đánh giá khả năng nhân rộng sang các khóa khác.',\n    },\n    OUTCOME_WEAK: {\n      signal_text: 'Outcome suy yếu hoặc Lost tăng dù funnel chưa giảm đồng đều.',\n      pic_check: 'PIC rà soát các deal Won/Lost đóng trong 7 ngày gần nhất và trạng thái chuyển đổi trước đó.',\n      next_action: 'Nhóm các điểm nghẽn có bằng chứng và xác định bước xử lý cho từng nhóm deal.',\n    },\n    MIXED_SIGNALS: {\n      signal_text: 'Tín hiệu giữa các tầng funnel chưa đồng đều.',\n      pic_check: 'PIC kiểm tra tầng đang giảm và đối chiếu với các tầng đang tăng hoặc đi ngang.',\n      next_action: 'Chọn một điểm chuyển đổi cần theo dõi sát trong 7 ngày tới.',\n    },\n    STABLE: {\n      signal_text: 'Các chỉ số chính đang đi ngang trong normal band.',\n      pic_check: 'PIC xác nhận nhịp vận hành hiện tại và các nguồn Lead đóng góp chính.',\n      next_action: 'Duy trì nhịp và theo dõi sớm nếu chỉ số rời normal band.',\n    },\n  };\n  return templates[course.insight_code] || templates.MIXED_SIGNALS;\n}\n\nconst cfg = $('Config').first().json;\nconst rd = $('Resolve Calendar').first().json;\nconst q0 = rows('Q0 Daily Data Health');\nconst q1 = $('Q1 Daily Overall Funnel').first().json;\nconst q2 = rows('Q2 Daily Focus Trend');\nconst band = number(cfg.thresholds.kpi_normal_band_pct, 10);\n\nconst overall = {\n  leads_yesterday: number(q1.leads_yesterday),\n  won_yesterday: number(q1.won_yesterday),\n  acquisition: {\n    lead: compareCounts(q1.leads_curr, 7, q1.leads_prev, 7, band),\n    mql: compareCounts(q1.mql_curr, 7, q1.mql_prev, 7, band),\n  },\n  sales_funnel: {\n    discovery: compareCounts(q1.discovery_curr, 7, q1.discovery_prev, 7, band),\n    needfit: compareCounts(q1.needfit_curr, 7, q1.needfit_prev, 7, band),\n  },\n  outcome: {\n    won: compareCounts(q1.won_curr, 7, q1.won_prev, 7, band),\n    lost: compareCounts(q1.lost_curr, 7, q1.lost_prev, 7, band),\n  },\n};\n\nconst acquisitionDown = Object.values(overall.acquisition).filter((metric) => metric.direction === 'down').length;\nconst salesDown = Object.values(overall.sales_funnel).filter((metric) => metric.direction === 'down').length;\nconst lostUp = overall.outcome.lost.direction === 'up';\nconst wonDown = overall.outcome.won.direction === 'down';\nconst positiveCount = [\n  ...Object.values(overall.acquisition),\n  ...Object.values(overall.sales_funnel),\n  overall.outcome.won,\n].filter((metric) => metric.direction === 'up').length + Number(overall.outcome.lost.direction === 'down');\n\nif (acquisitionDown > 0 && salesDown > 0 && lostUp) overall.summary_code = 'INPUT_MID_DOWN_LOST_UP';\nelse if (acquisitionDown > 0 && salesDown > 0) overall.summary_code = 'INPUT_MID_DOWN';\nelse if (wonDown || lostUp) overall.summary_code = 'OUTCOME_WEAK';\nelse if (positiveCount >= 4) overall.summary_code = 'FUNNEL_IMPROVING';\nelse overall.summary_code = 'FUNNEL_MIXED_OR_STABLE';\n\nconst focusCourses = q2.map((row) => buildCourse(row, cfg));\nfocusCourses.sort((a, b) => statusRank(b.status) - statusRank(a.status)\n  || b.signal_counts.short_adverse - a.signal_counts.short_adverse\n  || b.signal_counts.long_down - a.signal_counts.long_down\n  || a.course_name.localeCompare(b.course_name));\n\nconst attentionCandidates = [...focusCourses].sort((a, b) => {\n  const scoreA = statusRank(a.status) * 100 + a.signal_counts.short_adverse * 10\n    + a.signal_counts.long_down * 3 + Number(a.flag_no_lead) * 20\n    + Number(a.outcome_7d.lost.direction === 'up') * 8 + a.signal_counts.short_positive;\n  const scoreB = statusRank(b.status) * 100 + b.signal_counts.short_adverse * 10\n    + b.signal_counts.long_down * 3 + Number(b.flag_no_lead) * 20\n    + Number(b.outcome_7d.lost.direction === 'up') * 8 + b.signal_counts.short_positive;\n  return scoreB - scoreA || a.course_name.localeCompare(b.course_name);\n});\n\nconst attentionItems = attentionCandidates\n  .slice(0, number(cfg.limits.daily_priority_limit))\n  .map((course, index) => ({\n    rank: index + 1,\n    course_key: course.course_key,\n    course_name: course.course_name,\n    status: course.status,\n    status_icon: course.status_icon,\n    insight_code: course.insight_code,\n    ...attentionCopy(course),\n  }));\n\nconst quoteBank = [\n  'Thành công được tạo nên từ những bước nhỏ được lặp lại mỗi ngày.',\n  'Tiến bộ bền vững bắt đầu từ việc nhìn rõ điều quan trọng nhất hôm nay.',\n  'Kỷ luật trong những việc nhỏ tạo nên khác biệt lớn theo thời gian.',\n  'Một ngày tốt bắt đầu bằng một ưu tiên rõ ràng và một hành động cụ thể.',\n  'Dữ liệu cho ta tín hiệu; hành động nhất quán tạo nên kết quả.',\n  'Đi chậm nhưng đúng hướng vẫn là đang tiến về phía trước.',\n  'Điều được cải thiện mỗi ngày sẽ trở thành lợi thế theo thời gian.',\n];\nconst quoteIndex = Number(rd.run_date.replace(/-/g, '')) % quoteBank.length;\n\nconst totalLeads = number(q0[0]?.total_leads);\nconst missingCount = q0.filter((row) => row.mapping_status === 'MISSING_COURSE')\n  .reduce((sum, row) => sum + number(row.issue_count), 0);\nconst unmappedCount = q0.filter((row) => row.mapping_status === 'UNMAPPED_COURSE')\n  .reduce((sum, row) => sum + number(row.issue_count), 0);\nconst issueCount = missingCount + unmappedCount;\nconst issueRate = totalLeads ? round((issueCount / totalLeads) * 100, 1) : 0;\n\nreturn [{ json: {\n  schema_version: '3.1',\n  report_mode: 'daily',\n  run_id: rd.run_id,\n  run_date: rd.run_date,\n  run_date_display: rd.run_date_display,\n  report_date: rd.report_date,\n  report_date_display: rd.report_date_display,\n  report_day: rd.report_day,\n  weekday_label: rd.weekday_label,\n  daily_display_title: rd.daily_display_title,\n  daily_quote: quoteBank[quoteIndex],\n  periods: rd.periods,\n  normal_band_pct: band,\n  overall,\n  focus_courses: focusCourses,\n  attention_items: attentionItems,\n  data_health: {\n    total_leads: totalLeads,\n    missing_course_count: missingCount,\n    unmapped_course_count: unmappedCount,\n    unmapped_rate_pct: issueRate,\n    is_severe: issueCount >= number(cfg.thresholds.unmapped_alert_min)\n      && issueRate >= number(cfg.thresholds.unmapped_alert_rate_pct),\n    rows: q0,\n  },\n  writer_rules: {\n    attention_limit: number(cfg.limits.daily_priority_limit),\n  },\n} }];"
+      },
+      "id": "7dd3f1c2-f9b8-42e4-9da6-79c6be864238",
+      "name": "Build Daily Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        560,
+        820
+      ],
+      "notes": "Build Daily v3.1 — normal band ±10%; tính sẵn averages, %, arrows, 3-state status, baseline và attention copy."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Payload Daily đã tính sẵn:\n{{ JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "Bạn là Daily Brief Writer của Tomorrow Marketers.\n\nNHIỆM VỤ\nRender payload Daily thành đúng format dưới đây. SQL/Code đã tính sẵn mọi average, phần trăm, direction, status, baseline, ranking và action copy. Bạn chỉ được diễn đạt insight; không được tự tính lại.\n\nQUY TẮC BẮT BUỘC\n- Chỉ dùng dữ liệu trong payload.\n- Không revenue/doanh thu. Không CVR. Không Data Health, Warning, Source/UTM, Pipeline hoặc section ngoài template.\n- Không bỏ course. Giữ đúng thứ tự focus_courses.\n- Không đổi số, không tự tính %, không tự chọn arrow/status, không tự xếp hạng.\n- Dùng trực tiếp current_display và change_display. Không thay đổi ký hiệu ↑, →, ↓.\n- Status icon dùng trực tiếp status_icon; chỉ có 🔴, 🟠, 🟢.\n- Insight mỗi course tối đa một câu, tổng hợp pattern từ insight_code, status_reason và các direction; không chỉ đọc lại danh sách mũi tên.\n- Section 👀 CẦN CHÚ Ý dùng đúng attention_items. Mỗi item phải nối đủ: signal_text + pic_check + “Hành động tiếp theo: ” + next_action. Không bịa thêm hành động.\n- Output là plain Markdown tự nhiên; không code block, bảng, ###, dấu backslash hoặc escape Markdown.\n- Không in dòng “Dữ liệu đến hết”, không in legend và không thêm lời dẫn/kết.\n\nTEMPLATE CỐ ĐỊNH\n☀️ DAILY 5 MINUTES BRIEF — [weekday_label VIẾT HOA] [run_date_display]\n\n“[daily_quote]”\n\n📊 TOÀN CẢNH\n\nHôm qua: [overall.leads_yesterday] Lead | [overall.won_yesterday] Won\n\nXu hướng 7 ngày:\n\nAcquisition: Lead [overall.acquisition.lead.current_display]/ngày [overall.acquisition.lead.change_display] | MQL [overall.acquisition.mql.current_display]/ngày [overall.acquisition.mql.change_display]\n\nSales Funnel: SQL Discovery [overall.sales_funnel.discovery.current_display]/ngày [overall.sales_funnel.discovery.change_display] | SQL Need-fit [overall.sales_funnel.needfit.current_display]/ngày [overall.sales_funnel.needfit.change_display]\n\nOutcome: Won [overall.outcome.won.current_display]/ngày [overall.outcome.won.change_display] | Lost [overall.outcome.lost.current_display]/ngày [overall.outcome.lost.change_display]\n\n→ [Một câu kết luận từ overall.summary_code; chỉ nêu pattern đáng chú ý, không lặp lại mọi số.]\n\n[daily_display_title]\n\n[LẶP CHO MỌI PHẦN TỬ focus_courses]\n[status_icon] [course_name]\n\nFunnel 7d:\nLead [funnel_7d.lead.current_display]/ngày [funnel_7d.lead.change_display] → MQL [funnel_7d.mql.current_display]/ngày [funnel_7d.mql.change_display] → Discovery [funnel_7d.discovery.current_display]/ngày [funnel_7d.discovery.change_display] → Need-fit [funnel_7d.needfit.current_display]/ngày [funnel_7d.needfit.change_display]\n\nOutcome 7d:\nWon [outcome_7d.won.current_display]/ngày [outcome_7d.won.change_display] | Lost [outcome_7d.lost.current_display]/ngày [outcome_7d.lost.change_display]\n\nSo với baseline:\n30d/90d: Lead [baseline_30d_90d.lead_30d.baseline_display]/ngày [direction arrow của lead_30d] · [baseline_30d_90d.lead_90d.baseline_display]/ngày [direction arrow của lead_90d] | Won [baseline_30d_90d.won_30d.baseline_display]/ngày [direction arrow của won_30d] · [baseline_30d_90d.won_90d.baseline_display]/ngày [direction arrow của won_90d]\n\n→ [Một câu insight tổng hợp.]\n\n[SAU COURSE CUỐI]\n👀 CẦN CHÚ Ý\n\n1. [course_name] — [signal_text] [pic_check] Hành động tiếp theo: [next_action]\n2. ...\n3. ...\n\nMAPPING DIRECTION CHO BASELINE\n- up → ↑\n- flat → →\n- down → ↓\nChỉ map field direction thành đúng một arrow; không thêm phần trăm ở dòng baseline.\n\nMAPPING SUMMARY_CODE\n- INPUT_MID_DOWN_LOST_UP: Đầu–giữa funnel đang suy yếu rõ rệt, trong khi Lost tăng.\n- INPUT_MID_DOWN: Đầu và giữa funnel cùng chậm lại; cần ưu tiên kiểm tra các điểm chuyển đổi chính.\n- OUTCOME_WEAK: Funnel đầu vào chưa giảm đồng đều nhưng Outcome đang yếu đi.\n- FUNNEL_IMPROVING: Funnel và Outcome đang cải thiện trên diện rộng.\n- FUNNEL_MIXED_OR_STABLE: Các tầng funnel đang cho tín hiệu đan xen, chưa có xu hướng đồng nhất.\n\nMAPPING INSIGHT_CODE\n- BROAD_FUNNEL_DOWN_LOST_UP: Suy yếu xuyên suốt funnel và Lost tăng mạnh.\n- BROAD_FUNNEL_DOWN: Funnel suy yếu trên diện rộng và thấp hơn nhịp gần đây.\n- ACQUISITION_UP_SQL_DOWN: Acquisition phục hồi ngắn hạn, nhưng SQL chưa theo kịp.\n- NO_LEAD_LONG: Đầu vào đang gián đoạn kéo dài; cần ưu tiên kiểm tra nguồn Lead và tracking.\n- SHORT_UP_LONG_BELOW: Current 7d phục hồi nhưng vẫn dưới mặt bằng 30d/90d.\n- FUNNEL_OUTCOME_STRONG: Funnel cải thiện đồng đều và cao hơn mặt bằng dài hạn.\n- OUTCOME_WEAK: Funnel chưa suy yếu đồng đều nhưng Outcome cần được chú ý.\n- MIXED_SIGNALS: Các tầng funnel đang cho tín hiệu trái chiều; cần tập trung vào điểm chuyển đổi yếu nhất.\n- STABLE: Các chỉ số chính đang đi ngang trong normal band ±10%.\n\nVÍ DỤ FORMAT\nCác số dưới đây chỉ minh họa. Luôn thay bằng payload thật.\n\n☀️ DAILY 5 MINUTES BRIEF — THỨ HAI 31/08\n\n“Thành công không đến từ những điều lớn lao, mà từ việc bạn kiên trì làm tốt những điều nhỏ bé mỗi ngày.”\n\n📊 TOÀN CẢNH\n\nHôm qua: 2 Lead | 1 Won\n\nXu hướng 7 ngày:\n\nAcquisition: Lead 9/ngày ↓30.8% | MQL 4.86/ngày ↓51.4%\n\nSales Funnel: SQL Discovery 4/ngày ↓46.2% | SQL Need-fit 2.57/ngày ↓37.9%\n\nOutcome: Won 29/ngày →-6.5% | Lost 18/ngày ↑28.6%\n\n→ Đầu–giữa funnel đang suy yếu rõ rệt, trong khi Lost tăng.\n\n📚 MARKETING ENTRY MONDAY\n\n🟠 Case Mastery\n\nFunnel 7d:\nLead 10/ngày ↑25% → MQL 7/ngày ↑40% → Discovery 5/ngày ↓17% → Need-fit 3/ngày ↓25%\n\nOutcome 7d:\nWon 3/ngày ↑50% | Lost 2/ngày →0%\n\nSo với baseline:\n30d/90d: Lead 11.2/ngày ↓ · 12.3/ngày ↓ | Won 3.8/ngày ↓ · 4.1/ngày ↓\n\n→ Acquisition phục hồi ngắn hạn, nhưng SQL và Won vẫn dưới mặt bằng dài hạn.\n\n👀 CẦN CHÚ Ý\n\n1. Case Mastery — Acquisition phục hồi nhưng SQL chưa theo kịp. PIC kiểm tra các Lead/MQL chưa chuyển sang Discovery hoặc Need-fit. Hành động tiếp theo: lập danh sách deal cần follow-up và xác định bước xử lý cho từng deal.\n\nTỰ KIỂM TRA TRƯỚC KHI TRẢ OUTPUT\n1. Header đúng “DAILY 5 MINUTES BRIEF”; có quote; không có data note.\n2. Overall đủ Lead, MQL, SQL Discovery, SQL Need-fit, Won, Lost; không có CVR.\n3. Mỗi course đủ Funnel 7d, Outcome 7d, baseline Lead/Won 30d/90d và đúng một insight.\n4. Không bỏ course; không tự tính hoặc đổi arrow.\n5. CẦN CHÚ Ý có tối đa writer_rules.attention_limit item và mỗi item đủ ba phần.\n6. Không revenue, CVR, section thừa, bảng, code block hoặc ký tự backslash."
+        }
+      },
+      "id": "966e4b1d-0151-4c94-a055-1e67e10413dc",
+      "name": "Daily Brief Writer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        820,
+        820
+      ],
+      "notes": "Daily Writer v3.1 — exact chat layout, no CVR/revenue, renders deterministic display fields and attention actions."
+    },
+    {
+      "parameters": {
+        "projectId": "tmdatabase",
+        "sqlQuery": "WITH\nparams AS (\n  SELECT\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_start }}')) AS curr_start,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 1 DAY)) AS curr_end,\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.week_prev_start }}')) AS prev_start,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.periods.week_prev_end }}'), INTERVAL 1 DAY)) AS prev_end\n),\n\nlead_metrics AS (\n  SELECT\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.curr_end, d.deal_id, NULL)) AS leads_curr,\n    COUNT(DISTINCT IF(d.created_at >= p.prev_start AND d.created_at < p.prev_end, d.deal_id, NULL)) AS leads_prev,\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.curr_end AND d.stage_id IN (224,264,267,268,265,92,91,227,228,225,229,226,220,221,217,222,218,219,75,76,73,74,79,80,1328,1329,1330,1331,1332), d.deal_id, NULL)) AS mql_curr,\n    COUNT(DISTINCT IF(d.created_at >= p.prev_start AND d.created_at < p.prev_end AND d.stage_id IN (224,264,267,268,265,92,91,227,228,225,229,226,220,221,217,222,218,219,75,76,73,74,79,80,1328,1329,1330,1331,1332), d.deal_id, NULL)) AS mql_prev,\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.curr_end AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,218,219,75,76,74,80,1329,1330,1331,1332), d.deal_id, NULL)) AS discovery_curr,\n    COUNT(DISTINCT IF(d.created_at >= p.prev_start AND d.created_at < p.prev_end AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,218,219,75,76,74,80,1329,1330,1331,1332), d.deal_id, NULL)) AS discovery_prev,\n    COUNT(DISTINCT IF(d.created_at >= p.curr_start AND d.created_at < p.curr_end AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,219,75,76,1330,1331,1332), d.deal_id, NULL)) AS needfit_curr,\n    COUNT(DISTINCT IF(d.created_at >= p.prev_start AND d.created_at < p.prev_end AND d.stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,219,75,76,1330,1331,1332), d.deal_id, NULL)) AS needfit_prev\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.created_at >= p.prev_start AND d.created_at < p.curr_end\n),\n\noutcome_metrics AS (\n  SELECT\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.curr_start AND d.closed_at < p.curr_end, d.deal_id, NULL)) AS won_curr,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.prev_start AND d.closed_at < p.prev_end, d.deal_id, NULL)) AS won_prev,\n    COUNT(DISTINCT IF(d.deal_status = 'lost' AND d.closed_at >= p.curr_start AND d.closed_at < p.curr_end, d.deal_id, NULL)) AS lost_curr,\n    COUNT(DISTINCT IF(d.deal_status = 'lost' AND d.closed_at >= p.prev_start AND d.closed_at < p.prev_end, d.deal_id, NULL)) AS lost_prev\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.deal_status IN ('won', 'lost')\n    AND d.closed_at >= p.prev_start AND d.closed_at < p.curr_end\n)\n\nSELECT\n  l.*,\n  o.*,\n  ROUND(SAFE_DIVIDE(l.leads_curr - l.leads_prev, NULLIF(l.leads_prev, 0)) * 100, 1) AS leads_pct_change,\n  ROUND(SAFE_DIVIDE(l.mql_curr - l.mql_prev, NULLIF(l.mql_prev, 0)) * 100, 1) AS mql_pct_change,\n  ROUND(SAFE_DIVIDE(l.discovery_curr - l.discovery_prev, NULLIF(l.discovery_prev, 0)) * 100, 1) AS discovery_pct_change,\n  ROUND(SAFE_DIVIDE(l.needfit_curr - l.needfit_prev, NULLIF(l.needfit_prev, 0)) * 100, 1) AS needfit_pct_change,\n  ROUND(SAFE_DIVIDE(o.won_curr - o.won_prev, NULLIF(o.won_prev, 0)) * 100, 1) AS won_pct_change,\n  ROUND(SAFE_DIVIDE(o.lost_curr - o.lost_prev, NULLIF(o.lost_prev, 0)) * 100, 1) AS lost_pct_change,\n  ROUND(SAFE_DIVIDE(o.won_curr, o.won_curr + o.lost_curr) * 100, 1) AS cvr_curr,\n  ROUND(SAFE_DIVIDE(o.won_prev, o.won_prev + o.lost_prev) * 100, 1) AS cvr_prev,\n  ROUND((SAFE_DIVIDE(o.won_curr, o.won_curr + o.lost_curr) - SAFE_DIVIDE(o.won_prev, o.won_prev + o.lost_prev)) * 100, 1) AS cvr_change_pp\nFROM lead_metrics l\nCROSS JOIN outcome_metrics o;",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "190fd9f4-40d6-4b3b-84cb-f9deeaaac00b",
+      "name": "Q3 Weekly Overall Funnel",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        -220,
+        480
+      ],
+      "credentials": {
+        "googleBigQueryOAuth2Api": {
+          "id": "WKvomt3Li5hixb1H",
+          "name": "Google BigQuery account 2"
+        }
+      },
+      "notes": "Overall T2–T6 so với T2–T6 tuần trước."
+    },
+    {
+      "parameters": {
+        "projectId": "tmdatabase",
+        "sqlQuery": "WITH\nparams AS (\n  SELECT\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_start }}')) AS week_curr_start,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 1 DAY)) AS week_curr_end,\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.week_prev_start }}')) AS week_prev_start,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.periods.week_prev_end }}'), INTERVAL 1 DAY)) AS week_prev_end,\n    DATETIME(DATE_SUB(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 6 DAY)) AS trend_curr_start,\n    DATETIME(DATE_SUB(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 13 DAY)) AS trend_prev7_start,\n    DATETIME(DATE_SUB(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 36 DAY)) AS trend_prev30_start,\n    DATETIME(DATE_SUB(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 96 DAY)) AS trend_prev90_start,\n    DATETIME(DATE_SUB(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 6 DAY)) AS trend_baseline_end,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 1 DAY)) AS trend_end\n),\n\nactive_courses AS (\n  SELECT course_key, course_name, course_type, report_day, aliases\n  FROM `tmdatabase.dm_daily_brief.dim_course`\n  WHERE is_active = TRUE AND course_key IS NOT NULL AND TRIM(course_key) != ''\n),\n\ncourse_map AS (\n  SELECT DISTINCT\n    LOWER(TRIM(REGEXP_REPLACE(course_key, r'\\s+', ' '))) AS raw_key,\n    course_key\n  FROM active_courses\n\n  UNION DISTINCT\n\n  SELECT DISTINCT\n    LOWER(TRIM(REGEXP_REPLACE(alias, r'\\s+', ' '))) AS raw_key,\n    course_key\n  FROM active_courses,\n  UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS alias\n  WHERE TRIM(alias) != ''\n),\n\nlead_agg AS (\n  SELECT\n    m.course_key,\n    COUNT(DISTINCT IF(d.created_at >= p.week_curr_start AND d.created_at < p.week_curr_end, d.deal_id, NULL)) AS leads_this_week,\n    COUNT(DISTINCT IF(d.created_at >= p.week_prev_start AND d.created_at < p.week_prev_end, d.deal_id, NULL)) AS leads_last_week,\n    COUNT(DISTINCT IF(d.created_at >= p.trend_curr_start AND d.created_at < p.trend_end, d.deal_id, NULL)) AS lead_n_curr7,\n    COUNT(DISTINCT IF(d.created_at >= p.trend_prev7_start AND d.created_at < p.trend_baseline_end, d.deal_id, NULL)) AS lead_n_prev7,\n    COUNT(DISTINCT IF(d.created_at >= p.trend_prev30_start AND d.created_at < p.trend_baseline_end, d.deal_id, NULL)) AS lead_n_prev30,\n    COUNT(DISTINCT IF(d.created_at >= p.trend_prev90_start AND d.created_at < p.trend_baseline_end, d.deal_id, NULL)) AS lead_n_prev90,\n    MAX(IF(d.created_at < p.week_curr_end, DATE(d.created_at), NULL)) AS last_lead_date\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  INNER JOIN course_map m ON m.raw_key = LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' ')))\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.created_at < p.week_curr_end\n  GROUP BY m.course_key\n),\n\noutcome_agg AS (\n  SELECT\n    m.course_key,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.week_curr_start AND d.closed_at < p.week_curr_end, d.deal_id, NULL)) AS won_this_week,\n    COUNT(DISTINCT IF(d.deal_status = 'lost' AND d.closed_at >= p.week_curr_start AND d.closed_at < p.week_curr_end, d.deal_id, NULL)) AS lost_this_week,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.week_prev_start AND d.closed_at < p.week_prev_end, d.deal_id, NULL)) AS won_last_week,\n    COUNT(DISTINCT IF(d.deal_status = 'lost' AND d.closed_at >= p.week_prev_start AND d.closed_at < p.week_prev_end, d.deal_id, NULL)) AS lost_last_week,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.trend_curr_start AND d.closed_at < p.trend_end, d.deal_id, NULL)) AS won_n_curr7,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.trend_prev7_start AND d.closed_at < p.trend_baseline_end, d.deal_id, NULL)) AS won_n_prev7,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.trend_prev30_start AND d.closed_at < p.trend_baseline_end, d.deal_id, NULL)) AS won_n_prev30,\n    COUNT(DISTINCT IF(d.deal_status = 'won' AND d.closed_at >= p.trend_prev90_start AND d.closed_at < p.trend_baseline_end, d.deal_id, NULL)) AS won_n_prev90\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  INNER JOIN course_map m ON m.raw_key = LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' ')))\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.closed_at IS NOT NULL AND d.closed_at < p.week_curr_end\n  GROUP BY m.course_key\n),\n\nstale_agg AS (\n  SELECT\n    m.course_key,\n    COUNT(DISTINCT d.deal_id) AS stale_open_deals\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  INNER JOIN course_map m ON m.raw_key = LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' ')))\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.deal_status = 'open'\n    AND d.stage_start_at IS NOT NULL\n    AND DATETIME_DIFF(p.week_curr_end, d.stage_start_at, DAY) > {{ $('Config').first().json.thresholds.warning_open_deal_days }}\n  GROUP BY m.course_key\n)\n\nSELECT\n  c.course_key,\n  c.course_name,\n  c.course_type,\n  IFNULL(l.leads_this_week, 0) AS leads_this_week,\n  IFNULL(l.leads_last_week, 0) AS leads_last_week,\n  IFNULL(o.won_this_week, 0) AS won_this_week,\n  IFNULL(o.lost_this_week, 0) AS lost_this_week,\n  IFNULL(o.won_last_week, 0) AS won_last_week,\n  IFNULL(o.lost_last_week, 0) AS lost_last_week,\n  IFNULL(l.lead_n_curr7, 0) AS lead_n_curr7,\n  IFNULL(l.lead_n_prev7, 0) AS lead_n_prev7,\n  IFNULL(l.lead_n_prev30, 0) AS lead_n_prev30,\n  IFNULL(l.lead_n_prev90, 0) AS lead_n_prev90,\n  IFNULL(o.won_n_curr7, 0) AS won_n_curr7,\n  IFNULL(o.won_n_prev7, 0) AS won_n_prev7,\n  IFNULL(o.won_n_prev30, 0) AS won_n_prev30,\n  IFNULL(o.won_n_prev90, 0) AS won_n_prev90,\n  l.last_lead_date,\n  IF(l.last_lead_date IS NULL, NULL, DATE_DIFF(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), l.last_lead_date, DAY)) AS days_no_lead,\n  l.last_lead_date IS NOT NULL AS has_ever_had_lead,\n  IFNULL(s.stale_open_deals, 0) AS stale_open_deals\nFROM active_courses c\nLEFT JOIN lead_agg l USING (course_key)\nLEFT JOIN outcome_agg o USING (course_key)\nLEFT JOIN stale_agg s USING (course_key)\nORDER BY c.course_name;",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "6ad5e3ff-bd4d-4dd1-9f34-460c7836f63a",
+      "name": "Q4 Weekly Course Performance",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        40,
+        480
+      ],
+      "credentials": {
+        "googleBigQueryOAuth2Api": {
+          "id": "WKvomt3Li5hixb1H",
+          "name": "Google BigQuery account 2"
+        }
+      },
+      "notes": "Toàn bộ active course; weekly totals + trend 7/30/90 + stale raw."
+    },
+    {
+      "parameters": {
+        "projectId": "tmdatabase",
+        "sqlQuery": "WITH\nparams AS (\n  SELECT\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_start }}')) AS week_start,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 1 DAY)) AS week_end\n),\n\ncohort AS (\n  SELECT\n    d.deal_id,\n    d.deal_status,\n    COALESCE(NULLIF(TRIM(d.utm_source), ''), '(not set)') AS utm_source,\n    COALESCE(NULLIF(TRIM(d.utm_medium), ''), '(not set)') AS utm_medium,\n    COALESCE(NULLIF(TRIM(d.utm_campaign), ''), '(not set)') AS utm_campaign,\n    COALESCE(NULLIF(TRIM(d.utm_content), ''), '(not set)') AS utm_content,\n    COALESCE(NULLIF(TRIM(d.utm_product), ''), '(not set)') AS utm_product\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.created_at >= p.week_start AND d.created_at < p.week_end\n)\n\nSELECT\n  utm_source,\n  utm_medium,\n  utm_campaign,\n  utm_content,\n  utm_product,\n  COUNT(DISTINCT deal_id) AS n_leads,\n  COUNT(DISTINCT IF(deal_status = 'won', deal_id, NULL)) AS n_won,\n  COUNT(DISTINCT IF(deal_status = 'lost', deal_id, NULL)) AS n_lost,\n  COUNT(DISTINCT IF(deal_status IN ('won', 'lost'), deal_id, NULL)) AS n_closed,\n  ROUND(SAFE_DIVIDE(\n    COUNT(DISTINCT IF(deal_status = 'won', deal_id, NULL)),\n    COUNT(DISTINCT IF(deal_status IN ('won', 'lost'), deal_id, NULL))\n  ) * 100, 1) AS cohort_cvr_pct,\n  utm_content = '(not set)' AS is_untracked\nFROM cohort\nGROUP BY utm_source, utm_medium, utm_campaign, utm_content, utm_product\nORDER BY n_leads DESC, n_won DESC\nLIMIT {{ $('Config').first().json.limits.weekly_content_query_rows }};",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "250fba7c-c41b-4703-9c80-0ceca15920b9",
+      "name": "Q5 Weekly Content Performance",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        300,
+        480
+      ],
+      "credentials": {
+        "googleBigQueryOAuth2Api": {
+          "id": "WKvomt3Li5hixb1H",
+          "name": "Google BigQuery account 2"
+        }
+      },
+      "notes": "Top content và CVR cohort hiện tại; giữ đủ 5 UTM fields."
+    },
+    {
+      "parameters": {
+        "projectId": "tmdatabase",
+        "sqlQuery": "WITH\nparams AS (\n  SELECT\n    DATETIME(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_start }}')) AS week_start,\n    DATETIME(DATE_ADD(DATE('{{ $('Resolve Calendar').first().json.periods.week_curr_end }}'), INTERVAL 1 DAY)) AS week_end\n),\n\ncourse_map AS (\n  SELECT DISTINCT LOWER(TRIM(REGEXP_REPLACE(course_key, r'\\s+', ' '))) AS raw_key\n  FROM `tmdatabase.dm_daily_brief.dim_course`\n  WHERE course_key IS NOT NULL AND TRIM(course_key) != ''\n\n  UNION DISTINCT\n\n  SELECT DISTINCT LOWER(TRIM(REGEXP_REPLACE(alias, r'\\s+', ' '))) AS raw_key\n  FROM `tmdatabase.dm_daily_brief.dim_course`,\n  UNNEST(SPLIT(IFNULL(aliases, ''), ',')) AS alias\n  WHERE course_key IS NOT NULL AND TRIM(course_key) != '' AND TRIM(alias) != ''\n),\n\nweekly_leads AS (\n  SELECT\n    d.deal_id,\n    d.selected_course,\n    LOWER(TRIM(REGEXP_REPLACE(IFNULL(d.selected_course, ''), r'\\s+', ' '))) AS raw_key,\n    COALESCE(NULLIF(TRIM(d.utm_content), ''), '(not set)') AS utm_content\n  FROM `tmdatabase.dm_base_crm.deals` d\n  CROSS JOIN params p\n  WHERE NOT STARTS_WITH(IFNULL(d.failed_reason_id, ''), 'Trash:')\n    AND d.created_at >= p.week_start AND d.created_at < p.week_end\n),\n\ntotals AS (\n  SELECT\n    COUNT(DISTINCT deal_id) AS total_leads,\n    COUNT(DISTINCT IF(utm_content = '(not set)', deal_id, NULL)) AS untracked_leads\n  FROM weekly_leads\n),\n\nissues AS (\n  SELECT\n    l.deal_id,\n    l.selected_course,\n    CASE WHEN l.raw_key = '' THEN 'MISSING_COURSE' ELSE 'UNMAPPED_COURSE' END AS mapping_status\n  FROM weekly_leads l\n  LEFT JOIN course_map m ON m.raw_key = l.raw_key AND l.raw_key != ''\n  WHERE l.raw_key = '' OR m.raw_key IS NULL\n),\n\nsummary AS (\n  SELECT\n    mapping_status,\n    CASE WHEN mapping_status = 'MISSING_COURSE' THEN NULL ELSE selected_course END AS selected_course_raw,\n    COUNT(DISTINCT deal_id) AS issue_count\n  FROM issues\n  GROUP BY mapping_status, selected_course_raw\n)\n\nSELECT\n  IFNULL(s.mapping_status, 'OK') AS mapping_status,\n  s.selected_course_raw,\n  IFNULL(s.issue_count, 0) AS issue_count,\n  t.total_leads,\n  t.untracked_leads\nFROM totals t\nLEFT JOIN summary s ON TRUE\nORDER BY issue_count DESC, mapping_status;",
+        "options": {
+          "useLegacySql": false
+        }
+      },
+      "id": "785275bd-d7b1-4c3f-b684-da20a03b86d3",
+      "name": "Q6 Weekly Data Health",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        560,
+        480
+      ],
+      "credentials": {
+        "googleBigQueryOAuth2Api": {
+          "id": "WKvomt3Li5hixb1H",
+          "name": "Google BigQuery account 2"
+        }
+      },
+      "notes": "Weekly mapping quality và untracked UTM."
+    },
+    {
+      "parameters": {
+        "jsCode": "function rows(name) {\n  return $(name).all().map((item) => item.json);\n}\n\nfunction number(value, fallback = 0) {\n  if (value === null || value === undefined || value === '') return fallback;\n  const parsed = Number(value);\n  return Number.isFinite(parsed) ? parsed : fallback;\n}\n\nfunction bool(value) {\n  return value === true || String(value).toLowerCase() === 'true';\n}\n\nfunction round(value, digits = 2) {\n  const scale = 10 ** digits;\n  return Math.round((number(value) + Number.EPSILON) * scale) / scale;\n}\n\nfunction pct(curr, prev) {\n  if (number(prev) === 0) return null;\n  return round(((number(curr) - number(prev)) / number(prev)) * 100, 1);\n}\n\nfunction direction(curr, baseline, history90, minVolume, thresholdPct) {\n  const current = number(curr);\n  const base = number(baseline);\n  const lowVolume = (current * 7) < minVolume && number(history90) < minVolume;\n  if (lowVolume) return 'flat';\n  if (base === 0 && current === 0) return 'flat';\n  if (base === 0 && current > 0) return 'up';\n  if (current === 0 && base > 0) return 'down';\n  const change = ((current - base) / base) * 100;\n  if (change >= thresholdPct) return 'up';\n  if (change <= -thresholdPct) return 'down';\n  return 'flat';\n}\n\nfunction overallDirection(curr, prev, minVolume, thresholdPct) {\n  const current = number(curr);\n  const base = number(prev);\n  if (current < minVolume && base < minVolume) return 'flat';\n  if (base === 0 && current >= minVolume) return 'up';\n  if (current === 0 && base >= minVolume) return 'down';\n  return direction(current, base, Math.max(current, base), 0, thresholdPct);\n}\n\nfunction statusRank(status) {\n  return { red: 4, orange: 3, yellow: 2, normal: 1 }[status] || 0;\n}\n\nfunction courseTrend(row, cfg, reportDate) {\n  const minVolume = number(cfg.thresholds.min_base_volume);\n  const trendPct = number(cfg.thresholds.trend_direction_pct);\n  const lead = {\n    curr7: number(row.lead_n_curr7), prev7: number(row.lead_n_prev7),\n    prev30: number(row.lead_n_prev30), prev90: number(row.lead_n_prev90),\n  };\n  const won = {\n    curr7: number(row.won_n_curr7), prev7: number(row.won_n_prev7),\n    prev30: number(row.won_n_prev30), prev90: number(row.won_n_prev90),\n  };\n  const leadDirections = {\n    prev7: direction(lead.curr7 / 7, lead.prev7 / 7, lead.prev90, minVolume, trendPct),\n    prev30: direction(lead.curr7 / 7, lead.prev30 / 30, lead.prev90, minVolume, trendPct),\n    prev90: direction(lead.curr7 / 7, lead.prev90 / 90, lead.prev90, minVolume, trendPct),\n  };\n  const wonDirections = {\n    prev7: direction(won.curr7 / 7, won.prev7 / 7, won.prev90, minVolume, trendPct),\n    prev30: direction(won.curr7 / 7, won.prev30 / 30, won.prev90, minVolume, trendPct),\n    prev90: direction(won.curr7 / 7, won.prev90 / 90, won.prev90, minVolume, trendPct),\n  };\n  const leadDownCount = Object.values(leadDirections).filter((value) => value === 'down').length;\n  const wonDownCount = Object.values(wonDirections).filter((value) => value === 'down').length;\n  const hasEverLead = bool(row.has_ever_had_lead);\n  const daysNoLead = row.days_no_lead === null || row.days_no_lead === undefined ? null : number(row.days_no_lead);\n  const lowVolume = lead.curr7 < minVolume && lead.prev90 < minVolume;\n  const lowWonVolume = won.curr7 < minVolume && won.prev90 < minVolume;\n  const flagNoLead = hasEverLead && daysNoLead !== null\n    && daysNoLead >= number(cfg.thresholds.warning_zero_lead_days)\n    && lead.prev90 >= minVolume;\n\n  let status = 'normal';\n  if (!lowVolume && leadDirections.prev7 === 'down' && wonDirections.prev7 === 'down'\n      && (leadDirections.prev30 === 'down' || leadDirections.prev90 === 'down'\n          || wonDirections.prev30 === 'down' || wonDirections.prev90 === 'down')) status = 'red';\n  else if (flagNoLead || leadDownCount >= 2 || wonDownCount >= 2\n      || (leadDirections.prev7 === 'down' && wonDirections.prev7 === 'down')) status = 'orange';\n  else if (leadDownCount + wonDownCount > 0) status = 'yellow';\n\n  let interpretationCode = 'STABLE_OR_UP';\n  if (flagNoLead) interpretationCode = 'NO_LEAD';\n  else if (lowVolume) interpretationCode = 'LOW_VOLUME';\n  else if (leadDirections.prev7 === 'down' && wonDirections.prev7 === 'down') interpretationCode = 'LEAD_AND_WON_DOWN';\n  else if (leadDirections.prev7 === 'down' && wonDirections.prev7 !== 'down') interpretationCode = 'LEAD_DOWN_WON_OK';\n  else if (leadDirections.prev7 !== 'down' && wonDirections.prev7 === 'down') interpretationCode = 'WON_DOWN_LEAD_OK';\n  else if ([...Object.values(leadDirections), ...Object.values(wonDirections)].includes('down')) interpretationCode = 'MIXED_TREND';\n\n  const reasons = [];\n  if (leadDownCount) reasons.push('LEAD_DOWN_' + leadDownCount + '_BASELINES');\n  if (wonDownCount) reasons.push('WON_DOWN_' + wonDownCount + '_BASELINES');\n  if (flagNoLead) reasons.push('NO_LEAD_' + daysNoLead + '_DAYS');\n\n  return {\n    course_key: row.course_key,\n    course_name: row.course_name,\n    course_type: row.course_type,\n    lead_n_curr7: lead.curr7, lead_n_prev7: lead.prev7, lead_n_prev30: lead.prev30, lead_n_prev90: lead.prev90,\n    lead_pd_curr7: round(lead.curr7 / 7), lead_pd_prev7: round(lead.prev7 / 7),\n    lead_pd_prev30: round(lead.prev30 / 30), lead_pd_prev90: round(lead.prev90 / 90),\n    lead_vs_prev7: leadDirections.prev7, lead_vs_prev30: leadDirections.prev30, lead_vs_prev90: leadDirections.prev90,\n    won_n_curr7: won.curr7, won_n_prev7: won.prev7, won_n_prev30: won.prev30, won_n_prev90: won.prev90,\n    won_pd_curr7: round(won.curr7 / 7), won_pd_prev7: round(won.prev7 / 7),\n    won_pd_prev30: round(won.prev30 / 30), won_pd_prev90: round(won.prev90 / 90),\n    won_vs_prev7: wonDirections.prev7, won_vs_prev30: wonDirections.prev30, won_vs_prev90: wonDirections.prev90,\n    last_lead_date: row.last_lead_date || null,\n    days_no_lead: daysNoLead,\n    has_ever_had_lead: hasEverLead,\n    baseline_lead_expected7: round((lead.prev90 / 90) * 7, 1),\n    baseline_lead_expected5: round((lead.prev90 / 90) * 5, 1),\n    is_low_volume: lowVolume,\n    is_low_won_volume: lowWonVolume,\n    flag_no_lead: flagNoLead,\n    lead_down_count: leadDownCount,\n    won_down_count: wonDownCount,\n    status,\n    status_reason: reasons,\n    interpretation_code: interpretationCode,\n    lead_change_prev7_pct: pct(lead.curr7, lead.prev7),\n    won_change_prev7_pct: pct(won.curr7, won.prev7),\n  };\n}\n\nconst cfg = $('Config').first().json;\nconst rd = $('Resolve Calendar').first().json;\nconst q3 = $('Q3 Weekly Overall Funnel').first().json;\nconst q4 = rows('Q4 Weekly Course Performance');\nconst q5 = rows('Q5 Weekly Content Performance');\nconst q6 = rows('Q6 Weekly Data Health');\nconst minVolume = number(cfg.thresholds.min_base_volume);\nconst trendPct = number(cfg.thresholds.trend_direction_pct);\n\nfunction weeklyOverallDirection(curr, prev) {\n  return overallDirection(curr, prev, minVolume, trendPct);\n}\n\nconst overall = {\n  leads_curr: number(q3.leads_curr), leads_prev: number(q3.leads_prev), leads_pct_change: q3.leads_pct_change,\n  mql_curr: number(q3.mql_curr), mql_prev: number(q3.mql_prev), mql_pct_change: q3.mql_pct_change,\n  discovery_curr: number(q3.discovery_curr), discovery_prev: number(q3.discovery_prev), discovery_pct_change: q3.discovery_pct_change,\n  needfit_curr: number(q3.needfit_curr), needfit_prev: number(q3.needfit_prev), needfit_pct_change: q3.needfit_pct_change,\n  won_curr: number(q3.won_curr), won_prev: number(q3.won_prev), won_pct_change: q3.won_pct_change,\n  lost_curr: number(q3.lost_curr), lost_prev: number(q3.lost_prev), lost_pct_change: q3.lost_pct_change,\n  conversion_rate_curr: q3.cvr_curr, conversion_rate_prev: q3.cvr_prev, cvr_change_pp: q3.cvr_change_pp,\n};\n\noverall.lead_direction = weeklyOverallDirection(q3.leads_curr, q3.leads_prev);\noverall.mql_direction = weeklyOverallDirection(q3.mql_curr, q3.mql_prev);\noverall.discovery_direction = weeklyOverallDirection(q3.discovery_curr, q3.discovery_prev);\noverall.needfit_direction = weeklyOverallDirection(q3.needfit_curr, q3.needfit_prev);\noverall.won_direction = weeklyOverallDirection(q3.won_curr, q3.won_prev);\noverall.lost_direction = weeklyOverallDirection(q3.lost_curr, q3.lost_prev);\noverall.cvr_direction = number(q3.cvr_change_pp) >= number(cfg.thresholds.cvr_direction_pp) ? 'up'\n  : (number(q3.cvr_change_pp) <= -number(cfg.thresholds.cvr_direction_pp) ? 'down' : 'flat');\n\nconst acquisitionDown = overall.lead_direction === 'down' || overall.mql_direction === 'down';\nconst middleDown = overall.discovery_direction === 'down' || overall.needfit_direction === 'down';\nconst outcomeDown = overall.won_direction === 'down' || overall.cvr_direction === 'down' || overall.lost_direction === 'up';\nif (acquisitionDown && middleDown && outcomeDown) overall.summary_code = 'FUNNEL_BROAD_SLOWDOWN';\nelse if ((acquisitionDown || middleDown) && !outcomeDown) overall.summary_code = 'INPUT_MID_DOWN_OUTCOME_OK';\nelse if (!acquisitionDown && outcomeDown) overall.summary_code = 'OUTCOME_DOWN_INPUT_OK';\nelse overall.summary_code = 'FUNNEL_MIXED_OR_STABLE';\n\nconst courses = q4.map((row) => {\n  const trend = courseTrend(row, cfg, rd.report_date);\n  const stale = number(row.stale_open_deals);\n  const staleFlag = bool(cfg.features.enable_weekly_stale_open)\n    && stale >= number(cfg.thresholds.warning_open_deal_min);\n  let weeklyStatus = trend.status;\n  if (weeklyStatus === 'normal' && staleFlag) weeklyStatus = 'orange';\n  return {\n    ...trend,\n    leads_this_week: number(row.leads_this_week),\n    leads_last_week: number(row.leads_last_week),\n    lead_week_pct_change: pct(row.leads_this_week, row.leads_last_week),\n    won_this_week: number(row.won_this_week),\n    won_last_week: number(row.won_last_week),\n    won_week_pct_change: pct(row.won_this_week, row.won_last_week),\n    lost_this_week: number(row.lost_this_week),\n    lost_last_week: number(row.lost_last_week),\n    closed_this_week: number(row.won_this_week) + number(row.lost_this_week),\n    cvr_this_week: (number(row.won_this_week) + number(row.lost_this_week))\n      ? round(number(row.won_this_week) / (number(row.won_this_week) + number(row.lost_this_week)) * 100, 1) : null,\n    cvr_sample_ok: number(row.won_this_week) + number(row.lost_this_week) >= number(cfg.thresholds.weekly_min_course_closed),\n    stale_open_deals: bool(cfg.features.enable_weekly_stale_open) ? stale : null,\n    stale_open_flag: staleFlag,\n    weekly_status: weeklyStatus,\n    display_reason_codes: [\n      ...trend.status_reason.filter((reason) => !reason.startsWith('NO_LEAD_')),\n      ...(staleFlag ? ['WEEKLY_STALE_OPEN'] : []),\n    ],\n  };\n});\n\nfunction best(items, compare) {\n  return items.length ? [...items].sort(compare)[0] : null;\n}\n\nconst eligibleStrong = courses.filter((course) => course.leads_this_week >= number(cfg.thresholds.weekly_min_course_leads));\nconst eligibleChange = courses.filter((course) => course.leads_last_week >= minVolume && course.lead_week_pct_change !== null);\nconst strongest = best(eligibleStrong, (a, b) => b.won_this_week - a.won_this_week\n  || number(b.cvr_sample_ok ? b.cvr_this_week : -1) - number(a.cvr_sample_ok ? a.cvr_this_week : -1)\n  || b.leads_this_week - a.leads_this_week || a.course_name.localeCompare(b.course_name));\nconst improved = best(eligibleChange, (a, b) => b.lead_week_pct_change - a.lead_week_pct_change\n  || (b.leads_this_week - b.leads_last_week) - (a.leads_this_week - a.leads_last_week)\n  || (b.won_this_week - b.won_last_week) - (a.won_this_week - a.won_last_week)\n  || a.course_name.localeCompare(b.course_name));\nconst declined = best(eligibleChange, (a, b) => a.lead_week_pct_change - b.lead_week_pct_change\n  || (a.leads_this_week - a.leads_last_week) - (b.leads_this_week - b.leads_last_week)\n  || (a.won_this_week - a.won_last_week) - (b.won_this_week - b.won_last_week)\n  || a.course_name.localeCompare(b.course_name));\nconst weakest = best(eligibleStrong.filter((course) => course.leads_this_week > 0), (a, b) => a.won_this_week - b.won_this_week\n  || number(a.cvr_sample_ok ? a.cvr_this_week : 999) - number(b.cvr_sample_ok ? b.cvr_this_week : 999)\n  || number(a.lead_week_pct_change, 999) - number(b.lead_week_pct_change, 999)\n  || a.course_name.localeCompare(b.course_name));\n\nconst historyThreshold = number(cfg.thresholds.history_no_lead_days);\nconst noLeadHistory = courses\n  .filter((course) => !course.has_ever_had_lead || (course.days_no_lead !== null && course.days_no_lead > historyThreshold))\n  .sort((a, b) => Number(a.has_ever_had_lead) - Number(b.has_ever_had_lead)\n    || number(b.days_no_lead) - number(a.days_no_lead)\n    || number(b.baseline_lead_expected7) - number(a.baseline_lead_expected7)\n    || a.course_name.localeCompare(b.course_name));\n\nconst historyKeys = new Set(noLeadHistory.map((course) => course.course_key));\nconst newNoLeadWeekly = courses\n  .filter((course) => course.leads_this_week === 0\n    && course.has_ever_had_lead\n    && !historyKeys.has(course.course_key)\n    && (course.leads_last_week > 0 || course.baseline_lead_expected5 >= minVolume))\n  .sort((a, b) => b.leads_last_week - a.leads_last_week\n    || number(b.lead_pd_prev90) - number(a.lead_pd_prev90)\n    || a.course_name.localeCompare(b.course_name));\n\nconst warnings = courses\n  .filter((course) => course.display_reason_codes.length > 0 && (course.weekly_status !== 'normal' || course.stale_open_flag))\n  .sort((a, b) => statusRank(b.weekly_status) - statusRank(a.weekly_status)\n    || (b.lead_down_count + b.won_down_count) - (a.lead_down_count + a.won_down_count)\n    || a.course_name.localeCompare(b.course_name));\n\nconst tracked = q5\n  .filter((row) => !bool(row.is_untracked) && String(row.utm_content || '') !== '(not set)')\n  .map((row) => ({\n    ...row,\n    cohort_cvr_pct: row.cohort_cvr_pct === null || row.cohort_cvr_pct === undefined\n      ? null : number(row.cohort_cvr_pct),\n  }));\nconst topByLeads = [...tracked].sort((a, b) => number(b.n_leads) - number(a.n_leads)\n  || number(b.n_won) - number(a.n_won)\n  || String(a.utm_content).localeCompare(String(b.utm_content)))\n  .slice(0, number(cfg.limits.weekly_content_top_n));\nconst topByCvr = [...tracked]\n  .filter((row) => number(row.n_leads) >= number(cfg.thresholds.weekly_min_content_leads)\n    && number(row.n_closed) > 0 && row.cohort_cvr_pct !== null && row.cohort_cvr_pct !== undefined)\n  .sort((a, b) => number(b.cohort_cvr_pct) - number(a.cohort_cvr_pct)\n    || number(b.n_closed) - number(a.n_closed)\n    || number(b.n_leads) - number(a.n_leads)\n    || String(a.utm_content).localeCompare(String(b.utm_content)))\n  .slice(0, number(cfg.limits.weekly_content_top_n));\n\nconst totalLeads = number(q6[0]?.total_leads);\nconst untrackedLeads = number(q6[0]?.untracked_leads);\nconst missingCount = q6.filter((row) => row.mapping_status === 'MISSING_COURSE').reduce((sum, row) => sum + number(row.issue_count), 0);\nconst unmappedCount = q6.filter((row) => row.mapping_status === 'UNMAPPED_COURSE').reduce((sum, row) => sum + number(row.issue_count), 0);\nconst issueCount = missingCount + unmappedCount;\nconst issueRate = totalLeads ? round(issueCount / totalLeads * 100, 1) : 0;\nconst dataSevere = issueCount >= number(cfg.thresholds.unmapped_alert_min)\n  && issueRate >= number(cfg.thresholds.unmapped_alert_rate_pct);\n\nconst priorityItems = [];\nconst broadWarnings = warnings.filter((course) => course.lead_down_count > 0 && course.won_down_count > 0);\nif (broadWarnings.length) priorityItems.push({ rank: priorityItems.length + 1, priority_code: 'COURSE_TREND_DOWN', course_names: broadWarnings.map((c) => c.course_name) });\nif (newNoLeadWeekly.length) priorityItems.push({ rank: priorityItems.length + 1, priority_code: 'NEW_NO_LEAD_WEEKLY', course_names: newNoLeadWeekly.map((c) => c.course_name) });\nif (noLeadHistory.length) priorityItems.push({ rank: priorityItems.length + 1, priority_code: 'NO_LEAD_HISTORY', course_names: noLeadHistory.map((c) => c.course_name) });\nif (bool(cfg.features.enable_weekly_stale_open) && warnings.some((course) => course.stale_open_flag)) {\n  priorityItems.push({ rank: priorityItems.length + 1, priority_code: 'WEEKLY_STALE_OPEN', course_names: warnings.filter((c) => c.stale_open_flag).map((c) => c.course_name) });\n}\n\nreturn [{ json: {\n  schema_version: cfg.schema_version,\n  report_mode: 'weekly',\n  run_id: rd.run_id,\n  run_date: rd.run_date,\n  report_date: rd.report_date,\n  report_date_display: rd.report_date_display,\n  week_label: rd.week_label,\n  previous_week_label: rd.previous_week_label,\n  periods: rd.periods,\n  overall,\n  course_leaderboard: {\n    strongest: { eligible: Boolean(strongest), course: strongest, reason_codes: strongest ? ['WON_DESC', 'CVR_SAMPLE_GATED'] : [] },\n    most_improved: { eligible: Boolean(improved), course: improved, reason_codes: improved ? ['LEAD_CHANGE_DESC'] : [] },\n    most_declined: { eligible: Boolean(declined), course: declined, reason_codes: declined ? ['LEAD_CHANGE_ASC'] : [] },\n    weakest: { eligible: Boolean(weakest), course: weakest, reason_codes: weakest ? ['WON_ASC', 'CVR_SAMPLE_GATED'] : [] },\n  },\n  content_performance: {\n    top_by_leads: topByLeads,\n    top_by_cvr: topByCvr,\n    untracked: { n_leads: untrackedLeads, share_pct: totalLeads ? round(untrackedLeads / totalLeads * 100, 1) : 0 },\n    cvr_label: 'CVR cohort hiện tại',\n  },\n  warnings: { total: warnings.length, courses: warnings, display_courses: warnings },\n  no_lead_history: { threshold_days: historyThreshold, total: noLeadHistory.length, courses: noLeadHistory, display_courses: noLeadHistory },\n  new_no_lead_weekly: { total: newNoLeadWeekly.length, courses: newNoLeadWeekly },\n  priority_items: priorityItems.slice(0, number(cfg.limits.weekly_priority_limit)),\n  data_health: {\n    total_leads: totalLeads,\n    missing_course_count: missingCount,\n    unmapped_course_count: unmappedCount,\n    unmapped_rate_pct: issueRate,\n    untracked_utm_count: untrackedLeads,\n    is_severe: dataSevere,\n    alert_text_code: dataSevere ? 'COURSE_MAPPING_ISSUE' : null,\n    rows: q6,\n  },\n  writer_rules: {\n    priority_limit: number(cfg.limits.weekly_priority_limit),\n    show_data_health_alert: bool(cfg.features.show_weekly_data_health_alert) && dataSevere,\n    show_weekly_stale_open: bool(cfg.features.enable_weekly_stale_open),\n  },\n} }];"
+      },
+      "id": "8db8c6df-19d7-41fc-9d6e-13535fedc736",
+      "name": "Build Weekly Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        820,
+        480
+      ],
+      "notes": "Ranking, warning de-dup và hai nhóm No Lead được tính trước Writer."
+    },
+    {
+      "parameters": {
+        "promptType": "define",
+        "text": "=Payload Weekly đã tính sẵn:\n{{ JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "Bạn là Brief Writer Weekly của Tomorrow Marketers.\n\nChỉ dùng dữ liệu đã có trong payload. Không tự tính hoặc tự ranking. Không root cause. Không revenue/doanh thu. Mapping cố định: up=🟢↑, down=🔴↓, flat=⚪→; red=🔴, orange=🟠, yellow=🟡, normal=⚪.\n\nViết đúng 6 section:\n1) 📊 TOÀN CẢNH TUẦN — funnel 3 tầng Acquisition (Lead, MQL), Sales Funnel (Discovery, Need-fit), Outcome (Won, Lost, CVR); so sánh week_label với previous_week_label; conclusion theo summary_code.\n2) 🏆 KHÓA NỔI BẬT — Mạnh nhất, Tăng tốt nhất, Giảm mạnh nhất, Yếu nhất theo course_leaderboard; nếu cvr_sample_ok=false ghi “chưa đủ mẫu CVR”.\n3) 📣 CONTENT / NGUỒN LEAD — top_by_leads, top_by_cvr và untracked. Luôn gọi CVR content là “CVR cohort hiện tại”. (not set) là không tracking/Lead tay, không gọi Content.\n4) ⚠️ WARNING TUẦN NÀY — dùng toàn bộ warnings.display_courses, không tự top-N; mỗi course hai dòng trend 7d/30d/90d; không nói No Lead; chỉ in stale khi writer_rules.show_weekly_stale_open=true.\n5) 🚫 KHÓA KHÔNG RA LEAD — A. NO LEAD KÉO DÀI từ no_lead_history.display_courses; B. MỚI VỀ 0 LEAD TRONG TUẦN từ toàn bộ new_no_lead_weekly.courses. Không gộp hai array.\n6) 🎯 ƯU TIÊN TUẦN TỚI — tối đa priority_items; không owner/deadline.\n\nNếu một section không có item, ghi một câu ngắn “Không có tín hiệu đủ điều kiện” thay vì bullet rỗng. Data Health chỉ một dòng ngắn trong Overall khi được bật. Không dùng ###."
+        }
+      },
+      "id": "5df50a27-4d5a-4a43-85c8-a3e7a62652d3",
+      "name": "Weekly Brief Writer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [
+        1080,
+        480
+      ],
+      "notes": "AI chỉ làm chữ."
+    },
+    {
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": {
+          "temperature": 0.2
+        }
+      },
+      "id": "16ab4713-f41f-4e64-849b-920d2519b051",
+      "name": "OpenAI Model - Writer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [
+        940,
+        1040
+      ],
+      "credentials": {
+        "openAiApi": {
+          "id": "Xsb20kZqsvL7Fz75",
+          "name": "OpenAI account TM"
+        }
+      }
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Build Daily Payload').first().json;\nconst text = String($json.output || $json.text || '').trim();\nreturn [{ json: {\n  run_id: payload.run_id,\n  report_date: payload.report_date,\n  sent_at: new Date().toISOString(),\n  query_results: JSON.stringify(payload),\n  agent_output: text,\n  status: 'success',\n  error_message: null,\n} }];"
+      },
+      "id": "6f723ca5-66d8-490a-b5e7-750388fdf45d",
+      "name": "Assemble Daily",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1080,
+        820
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Build Weekly Payload').first().json;\nconst text = String($json.output || $json.text || '').trim();\nreturn [{ json: {\n  run_id: payload.run_id,\n  report_date: payload.report_date,\n  sent_at: new Date().toISOString(),\n  query_results: JSON.stringify(payload),\n  agent_output: text,\n  status: 'success',\n  error_message: null,\n} }];"
+      },
+      "id": "b48724e3-3f80-4b5a-a9a5-097662c482a3",
+      "name": "Assemble Weekly",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1340,
+        480
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: { ...$json, final_brief_text: $json.agent_output } }];"
+      },
+      "id": "da721ec0-a395-49f1-bc4e-23c06530a5e1",
+      "name": "Final Output",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1600,
+        560
+      ],
+      "notes": "Điểm hội tụ Daily/Weekly/Sunday."
+    },
+    {
+      "parameters": {
+        "jsCode": "return [{ json: {\n  run_id: $json.run_id,\n  report_date: $json.report_date,\n  sent_at: $json.sent_at,\n  query_results: $json.query_results,\n  agent_output: $json.agent_output,\n  status: $json.status,\n  error_message: $json.error_message,\n} }];"
+      },
+      "id": "3f9557f7-b43e-42dd-ab0f-2f789513785f",
+      "name": "Log Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1840,
+        560
+      ],
+      "notes": "Chỉ giữ field đúng schema brief_run_log."
+    },
+    {
+      "parameters": {
+        "operation": "insert",
+        "projectId": "tmdatabase",
+        "datasetId": "dm_daily_brief",
+        "tableId": "brief_run_log",
+        "options": {}
+      },
+      "id": "11f4b7d9-43f3-4581-a0ed-4d4fa407fe74",
+      "name": "Log Run",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [
+        2080,
+        560
+      ],
+      "credentials": {
+        "googleBigQueryOAuth2Api": {
+          "id": "WKvomt3Li5hixb1H",
+          "name": "Google BigQuery account 2"
+        }
+      },
+      "notes": "Ghi Build Payload cuối và final brief."
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://REPLACE-WITH-BASE-VN-WEBHOOK-URL-KHANH",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "base_content",
+              "value": "={{ $('Final Output').first().json.final_brief_text }}"
+            },
+            {
+              "name": "bot_name",
+              "value": "Daily 5 Minutes Brief"
+            },
+            {
+              "name": "bot_username",
+              "value": "base_review"
+            },
+            {
+              "name": "base_bankfeeds",
+              "value": "https://i.postimg.cc/G2JxR15F/Daily-5-Minutes-Brief.png"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2340,
+        460
+      ],
+      "id": "752ba6c0-4acf-45ff-9154-dd7553aaf79a",
+      "name": "HTTP Request - Khánh"
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://REPLACE-WITH-BASE-VN-WEBHOOK-URL-HUNG",
+        "sendBody": true,
+        "contentType": "form-urlencoded",
+        "bodyParameters": {
+          "parameters": [
+            {
+              "name": "base_content",
+              "value": "={{ $('Final Output').first().json.final_brief_text }}"
+            },
+            {
+              "name": "bot_name",
+              "value": "Daily 5 Minutes Brief"
+            },
+            {
+              "name": "bot_username",
+              "value": "base_review"
+            },
+            {
+              "name": "base_bankfeeds",
+              "value": "https://i.postimg.cc/G2JxR15F/Daily-5-Minutes-Brief.png"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.4,
+      "position": [
+        2340,
+        660
+      ],
+      "id": "3ff27cc4-e39d-427b-9be7-df066bf7af84",
+      "name": "HTTP Request - Hưng",
+      "disabled": true
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Schedule Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Manual Trigger": {
+      "main": [
+        [
+          {
+            "node": "Config",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Config": {
+      "main": [
+        [
+          {
+            "node": "Resolve Calendar",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Resolve Calendar": {
+      "main": [
+        [
+          {
+            "node": "Is Sunday?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Sunday?": {
+      "main": [
+        [
+          {
+            "node": "Sunday Message Writer",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Is Saturday?",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Sunday Message Writer": {
+      "main": [
+        [
+          {
+            "node": "Assemble Sunday",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Sunday": {
+      "main": [
+        [
+          {
+            "node": "Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Is Saturday?": {
+      "main": [
+        [
+          {
+            "node": "Q3 Weekly Overall Funnel",
+            "type": "main",
+            "index": 0
+          }
+        ],
+        [
+          {
+            "node": "Q0 Daily Data Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q0 Daily Data Health": {
+      "main": [
+        [
+          {
+            "node": "Q1 Daily Overall Funnel",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q1 Daily Overall Funnel": {
+      "main": [
+        [
+          {
+            "node": "Q2 Daily Focus Trend",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q2 Daily Focus Trend": {
+      "main": [
+        [
+          {
+            "node": "Build Daily Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Daily Payload": {
+      "main": [
+        [
+          {
+            "node": "Daily Brief Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Daily Brief Writer": {
+      "main": [
+        [
+          {
+            "node": "Assemble Daily",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Daily": {
+      "main": [
+        [
+          {
+            "node": "Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q3 Weekly Overall Funnel": {
+      "main": [
+        [
+          {
+            "node": "Q4 Weekly Course Performance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q4 Weekly Course Performance": {
+      "main": [
+        [
+          {
+            "node": "Q5 Weekly Content Performance",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q5 Weekly Content Performance": {
+      "main": [
+        [
+          {
+            "node": "Q6 Weekly Data Health",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Q6 Weekly Data Health": {
+      "main": [
+        [
+          {
+            "node": "Build Weekly Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Weekly Payload": {
+      "main": [
+        [
+          {
+            "node": "Weekly Brief Writer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Weekly Brief Writer": {
+      "main": [
+        [
+          {
+            "node": "Assemble Weekly",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Assemble Weekly": {
+      "main": [
+        [
+          {
+            "node": "Final Output",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model - Sunday": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Sunday Message Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "OpenAI Model - Writer": {
+      "ai_languageModel": [
+        [
+          {
+            "node": "Daily Brief Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          },
+          {
+            "node": "Weekly Brief Writer",
+            "type": "ai_languageModel",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Final Output": {
+      "main": [
+        [
+          {
+            "node": "Log Payload",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Payload": {
+      "main": [
+        [
+          {
+            "node": "Log Run",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Log Run": {
+      "main": [
+        [
+          {
+            "node": "HTTP Request - Khánh",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "HTTP Request - Hưng",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "426f21fb-ee94-426d-9bab-41d6f1133a1d",
+  "meta": {
+    "templateCredsSetupCompleted": true,
+    "instanceId": "66cb8e5d418c6a210ef48a853af67f56f4332a37b584b0adbd669b84af6ee70d"
+  },
+  "nodeGroups": {},
+  "tags": []
+}

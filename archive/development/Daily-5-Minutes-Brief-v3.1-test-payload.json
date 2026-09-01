@@ -1,0 +1,715 @@
+{
+  "schema_version": "3.1",
+  "report_mode": "daily",
+  "run_id": "test-v3-1",
+  "run_date": "2026-08-31",
+  "run_date_display": "31/08",
+  "report_date": "2026-08-30",
+  "report_date_display": "30/08",
+  "report_day": 2,
+  "weekday_label": "Thứ Hai",
+  "daily_display_title": "📚 MARKETING ENTRY MONDAY",
+  "daily_quote": "Một ngày tốt bắt đầu bằng một ưu tiên rõ ràng và một hành động cụ thể.",
+  "periods": {
+    "curr7_start": "2026-08-24",
+    "curr7_end": "2026-08-30",
+    "prev7_start": "2026-08-17",
+    "prev7_end": "2026-08-23",
+    "prev30_start": "2026-07-18",
+    "prev30_end": "2026-08-23",
+    "prev90_start": "2026-05-19",
+    "prev90_end": "2026-08-23"
+  },
+  "normal_band_pct": 10,
+  "overall": {
+    "leads_yesterday": 2,
+    "won_yesterday": 1,
+    "acquisition": {
+      "lead": {
+        "current_count": 125,
+        "baseline_count": 100,
+        "current_pd": 17.86,
+        "baseline_pd": 14.29,
+        "current_display": "17.86",
+        "baseline_display": "14.29",
+        "change_pct": 25,
+        "direction": "up",
+        "change_display": "↑25%"
+      },
+      "mql": {
+        "current_count": 108,
+        "baseline_count": 100,
+        "current_pd": 15.43,
+        "baseline_pd": 14.29,
+        "current_display": "15.43",
+        "baseline_display": "14.29",
+        "change_pct": 8,
+        "direction": "flat",
+        "change_display": "→8%"
+      }
+    },
+    "sales_funnel": {
+      "discovery": {
+        "current_count": 94,
+        "baseline_count": 100,
+        "current_pd": 13.43,
+        "baseline_pd": 14.29,
+        "current_display": "13.43",
+        "baseline_display": "14.29",
+        "change_pct": -6,
+        "direction": "flat",
+        "change_display": "→-6%"
+      },
+      "needfit": {
+        "current_count": 83,
+        "baseline_count": 100,
+        "current_pd": 11.86,
+        "baseline_pd": 14.29,
+        "current_display": "11.86",
+        "baseline_display": "14.29",
+        "change_pct": -17,
+        "direction": "down",
+        "change_display": "↓17%"
+      }
+    },
+    "outcome": {
+      "won": {
+        "current_count": 94,
+        "baseline_count": 100,
+        "current_pd": 13.43,
+        "baseline_pd": 14.29,
+        "current_display": "13.43",
+        "baseline_display": "14.29",
+        "change_pct": -6,
+        "direction": "flat",
+        "change_display": "→-6%"
+      },
+      "lost": {
+        "current_count": 128,
+        "baseline_count": 100,
+        "current_pd": 18.29,
+        "baseline_pd": 14.29,
+        "current_display": "18.29",
+        "baseline_display": "14.29",
+        "change_pct": 28,
+        "direction": "up",
+        "change_display": "↑28%"
+      }
+    },
+    "summary_code": "OUTCOME_WEAK"
+  },
+  "focus_courses": [
+    {
+      "course_key": "marketing-foundation",
+      "course_name": "Marketing Foundation",
+      "course_type": "Marketing",
+      "status": "red",
+      "status_icon": "🔴",
+      "status_reason": [
+        "FUNNEL_BROAD_DOWN",
+        "WON_DOWN",
+        "LOST_UP",
+        "BELOW_LONG_BASELINE"
+      ],
+      "insight_code": "BROAD_FUNNEL_DOWN_LOST_UP",
+      "funnel_7d": {
+        "lead": {
+          "current_count": 28,
+          "baseline_count": 49,
+          "current_pd": 4,
+          "baseline_pd": 7,
+          "current_display": "4",
+          "baseline_display": "7",
+          "change_pct": -42.9,
+          "direction": "down",
+          "change_display": "↓42.9%"
+        },
+        "mql": {
+          "current_count": 21,
+          "baseline_count": 35,
+          "current_pd": 3,
+          "baseline_pd": 5,
+          "current_display": "3",
+          "baseline_display": "5",
+          "change_pct": -40,
+          "direction": "down",
+          "change_display": "↓40%"
+        },
+        "discovery": {
+          "current_count": 14,
+          "baseline_count": 28,
+          "current_pd": 2,
+          "baseline_pd": 4,
+          "current_display": "2",
+          "baseline_display": "4",
+          "change_pct": -50,
+          "direction": "down",
+          "change_display": "↓50%"
+        },
+        "needfit": {
+          "current_count": 7,
+          "baseline_count": 21,
+          "current_pd": 1,
+          "baseline_pd": 3,
+          "current_display": "1",
+          "baseline_display": "3",
+          "change_pct": -66.7,
+          "direction": "down",
+          "change_display": "↓66.7%"
+        }
+      },
+      "outcome_7d": {
+        "won": {
+          "current_count": 14,
+          "baseline_count": 28,
+          "current_pd": 2,
+          "baseline_pd": 4,
+          "current_display": "2",
+          "baseline_display": "4",
+          "change_pct": -50,
+          "direction": "down",
+          "change_display": "↓50%"
+        },
+        "lost": {
+          "current_count": 28,
+          "baseline_count": 14,
+          "current_pd": 4,
+          "baseline_pd": 2,
+          "current_display": "4",
+          "baseline_display": "2",
+          "change_pct": 100,
+          "direction": "up",
+          "change_display": "↑100%"
+        }
+      },
+      "baseline_30d_90d": {
+        "lead_30d": {
+          "current_count": 28,
+          "baseline_count": 243,
+          "current_pd": 4,
+          "baseline_pd": 8.1,
+          "current_display": "4",
+          "baseline_display": "8.1",
+          "change_pct": -50.6,
+          "direction": "down",
+          "change_display": "↓50.6%"
+        },
+        "lead_90d": {
+          "current_count": 28,
+          "baseline_count": 846,
+          "current_pd": 4,
+          "baseline_pd": 9.4,
+          "current_display": "4",
+          "baseline_display": "9.4",
+          "change_pct": -57.4,
+          "direction": "down",
+          "change_display": "↓57.4%"
+        },
+        "won_30d": {
+          "current_count": 14,
+          "baseline_count": 129,
+          "current_pd": 2,
+          "baseline_pd": 4.3,
+          "current_display": "2",
+          "baseline_display": "4.3",
+          "change_pct": -53.5,
+          "direction": "down",
+          "change_display": "↓53.5%"
+        },
+        "won_90d": {
+          "current_count": 14,
+          "baseline_count": 450,
+          "current_pd": 2,
+          "baseline_pd": 5,
+          "current_display": "2",
+          "baseline_display": "5",
+          "change_pct": -60,
+          "direction": "down",
+          "change_display": "↓60%"
+        }
+      },
+      "last_lead_date": "2026-08-30",
+      "days_no_lead": 0,
+      "has_ever_had_lead": true,
+      "flag_no_lead": false,
+      "signal_counts": {
+        "funnel_down": 4,
+        "funnel_up": 0,
+        "short_adverse": 6,
+        "short_positive": 0,
+        "long_down": 4,
+        "long_up": 0
+      }
+    },
+    {
+      "course_key": "master-interview",
+      "course_name": "Master Interview",
+      "course_type": "Marketing",
+      "status": "red",
+      "status_icon": "🔴",
+      "status_reason": [
+        "FUNNEL_BROAD_DOWN",
+        "BELOW_LONG_BASELINE",
+        "NO_LEAD_13_DAYS"
+      ],
+      "insight_code": "NO_LEAD_LONG",
+      "funnel_7d": {
+        "lead": {
+          "current_count": 0,
+          "baseline_count": 7,
+          "current_pd": 0,
+          "baseline_pd": 1,
+          "current_display": "0",
+          "baseline_display": "1",
+          "change_pct": -100,
+          "direction": "down",
+          "change_display": "↓100%"
+        },
+        "mql": {
+          "current_count": 0,
+          "baseline_count": 5,
+          "current_pd": 0,
+          "baseline_pd": 0.71,
+          "current_display": "0",
+          "baseline_display": "0.71",
+          "change_pct": -100,
+          "direction": "down",
+          "change_display": "↓100%"
+        },
+        "discovery": {
+          "current_count": 0,
+          "baseline_count": 3,
+          "current_pd": 0,
+          "baseline_pd": 0.43,
+          "current_display": "0",
+          "baseline_display": "0.43",
+          "change_pct": -100,
+          "direction": "down",
+          "change_display": "↓100%"
+        },
+        "needfit": {
+          "current_count": 0,
+          "baseline_count": 2,
+          "current_pd": 0,
+          "baseline_pd": 0.29,
+          "current_display": "0",
+          "baseline_display": "0.29",
+          "change_pct": -100,
+          "direction": "down",
+          "change_display": "↓100%"
+        }
+      },
+      "outcome_7d": {
+        "won": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        },
+        "lost": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        }
+      },
+      "baseline_30d_90d": {
+        "lead_30d": {
+          "current_count": 0,
+          "baseline_count": 15,
+          "current_pd": 0,
+          "baseline_pd": 0.5,
+          "current_display": "0",
+          "baseline_display": "0.5",
+          "change_pct": -100,
+          "direction": "down",
+          "change_display": "↓100%"
+        },
+        "lead_90d": {
+          "current_count": 0,
+          "baseline_count": 45,
+          "current_pd": 0,
+          "baseline_pd": 0.5,
+          "current_display": "0",
+          "baseline_display": "0.5",
+          "change_pct": -100,
+          "direction": "down",
+          "change_display": "↓100%"
+        },
+        "won_30d": {
+          "current_count": 0,
+          "baseline_count": 3,
+          "current_pd": 0,
+          "baseline_pd": 0.1,
+          "current_display": "0",
+          "baseline_display": "0.1",
+          "change_pct": -100,
+          "direction": "down",
+          "change_display": "↓100%"
+        },
+        "won_90d": {
+          "current_count": 0,
+          "baseline_count": 9,
+          "current_pd": 0,
+          "baseline_pd": 0.1,
+          "current_display": "0",
+          "baseline_display": "0.1",
+          "change_pct": -100,
+          "direction": "down",
+          "change_display": "↓100%"
+        }
+      },
+      "last_lead_date": "2026-08-17",
+      "days_no_lead": 13,
+      "has_ever_had_lead": true,
+      "flag_no_lead": true,
+      "signal_counts": {
+        "funnel_down": 4,
+        "funnel_up": 0,
+        "short_adverse": 4,
+        "short_positive": 0,
+        "long_down": 4,
+        "long_up": 0
+      }
+    },
+    {
+      "course_key": "case-mastery",
+      "course_name": "Case Mastery",
+      "course_type": "Marketing",
+      "status": "orange",
+      "status_icon": "🟠",
+      "status_reason": [
+        "ACQUISITION_UP_SQL_DOWN",
+        "BELOW_LONG_BASELINE"
+      ],
+      "insight_code": "ACQUISITION_UP_SQL_DOWN",
+      "funnel_7d": {
+        "lead": {
+          "current_count": 70,
+          "baseline_count": 56,
+          "current_pd": 10,
+          "baseline_pd": 8,
+          "current_display": "10",
+          "baseline_display": "8",
+          "change_pct": 25,
+          "direction": "up",
+          "change_display": "↑25%"
+        },
+        "mql": {
+          "current_count": 49,
+          "baseline_count": 35,
+          "current_pd": 7,
+          "baseline_pd": 5,
+          "current_display": "7",
+          "baseline_display": "5",
+          "change_pct": 40,
+          "direction": "up",
+          "change_display": "↑40%"
+        },
+        "discovery": {
+          "current_count": 35,
+          "baseline_count": 42,
+          "current_pd": 5,
+          "baseline_pd": 6,
+          "current_display": "5",
+          "baseline_display": "6",
+          "change_pct": -16.7,
+          "direction": "down",
+          "change_display": "↓16.7%"
+        },
+        "needfit": {
+          "current_count": 21,
+          "baseline_count": 28,
+          "current_pd": 3,
+          "baseline_pd": 4,
+          "current_display": "3",
+          "baseline_display": "4",
+          "change_pct": -25,
+          "direction": "down",
+          "change_display": "↓25%"
+        }
+      },
+      "outcome_7d": {
+        "won": {
+          "current_count": 21,
+          "baseline_count": 14,
+          "current_pd": 3,
+          "baseline_pd": 2,
+          "current_display": "3",
+          "baseline_display": "2",
+          "change_pct": 50,
+          "direction": "up",
+          "change_display": "↑50%"
+        },
+        "lost": {
+          "current_count": 14,
+          "baseline_count": 14,
+          "current_pd": 2,
+          "baseline_pd": 2,
+          "current_display": "2",
+          "baseline_display": "2",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        }
+      },
+      "baseline_30d_90d": {
+        "lead_30d": {
+          "current_count": 70,
+          "baseline_count": 336,
+          "current_pd": 10,
+          "baseline_pd": 11.2,
+          "current_display": "10",
+          "baseline_display": "11.2",
+          "change_pct": -10.7,
+          "direction": "down",
+          "change_display": "↓10.7%"
+        },
+        "lead_90d": {
+          "current_count": 70,
+          "baseline_count": 1107,
+          "current_pd": 10,
+          "baseline_pd": 12.3,
+          "current_display": "10",
+          "baseline_display": "12.3",
+          "change_pct": -18.7,
+          "direction": "down",
+          "change_display": "↓18.7%"
+        },
+        "won_30d": {
+          "current_count": 21,
+          "baseline_count": 114,
+          "current_pd": 3,
+          "baseline_pd": 3.8,
+          "current_display": "3",
+          "baseline_display": "3.8",
+          "change_pct": -21.1,
+          "direction": "down",
+          "change_display": "↓21.1%"
+        },
+        "won_90d": {
+          "current_count": 21,
+          "baseline_count": 369,
+          "current_pd": 3,
+          "baseline_pd": 4.1,
+          "current_display": "3",
+          "baseline_display": "4.1",
+          "change_pct": -26.8,
+          "direction": "down",
+          "change_display": "↓26.8%"
+        }
+      },
+      "last_lead_date": "2026-08-30",
+      "days_no_lead": 0,
+      "has_ever_had_lead": true,
+      "flag_no_lead": false,
+      "signal_counts": {
+        "funnel_down": 2,
+        "funnel_up": 2,
+        "short_adverse": 2,
+        "short_positive": 3,
+        "long_down": 4,
+        "long_up": 0
+      }
+    },
+    {
+      "course_key": "marketing-case",
+      "course_name": "Marketing Case",
+      "course_type": "Marketing",
+      "status": "orange",
+      "status_icon": "🟠",
+      "status_reason": [],
+      "insight_code": "STABLE",
+      "funnel_7d": {
+        "lead": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        },
+        "mql": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        },
+        "discovery": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        },
+        "needfit": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        }
+      },
+      "outcome_7d": {
+        "won": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        },
+        "lost": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        }
+      },
+      "baseline_30d_90d": {
+        "lead_30d": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        },
+        "lead_90d": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        },
+        "won_30d": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        },
+        "won_90d": {
+          "current_count": 0,
+          "baseline_count": 0,
+          "current_pd": 0,
+          "baseline_pd": 0,
+          "current_display": "0",
+          "baseline_display": "0",
+          "change_pct": 0,
+          "direction": "flat",
+          "change_display": "→0%"
+        }
+      },
+      "last_lead_date": null,
+      "days_no_lead": null,
+      "has_ever_had_lead": false,
+      "flag_no_lead": false,
+      "signal_counts": {
+        "funnel_down": 0,
+        "funnel_up": 0,
+        "short_adverse": 0,
+        "short_positive": 0,
+        "long_down": 0,
+        "long_up": 0
+      }
+    }
+  ],
+  "attention_items": [
+    {
+      "rank": 1,
+      "course_key": "marketing-foundation",
+      "course_name": "Marketing Foundation",
+      "status": "red",
+      "status_icon": "🔴",
+      "insight_code": "BROAD_FUNNEL_DOWN_LOST_UP",
+      "signal_text": "Funnel giảm toàn diện, Lost tăng.",
+      "pic_check": "PIC rà soát nguồn Lead, chất lượng MQL và các deal Lost trong 7 ngày gần nhất.",
+      "next_action": "Chốt 1–2 nguyên nhân chính và đề xuất kế hoạch phục hồi."
+    },
+    {
+      "rank": 2,
+      "course_key": "master-interview",
+      "course_name": "Master Interview",
+      "status": "red",
+      "status_icon": "🔴",
+      "insight_code": "NO_LEAD_LONG",
+      "signal_text": "Không phát sinh Lead trong nhiều ngày dù trước đó có nhu cầu.",
+      "pic_check": "PIC kiểm tra nguồn Lead, tracking và tình trạng triển khai acquisition của khóa.",
+      "next_action": "Xác nhận nguyên nhân vận hành có thể kiểm chứng và chốt phương án khôi phục Lead."
+    },
+    {
+      "rank": 3,
+      "course_key": "case-mastery",
+      "course_name": "Case Mastery",
+      "status": "orange",
+      "status_icon": "🟠",
+      "insight_code": "ACQUISITION_UP_SQL_DOWN",
+      "signal_text": "Acquisition phục hồi nhưng SQL chưa theo kịp.",
+      "pic_check": "PIC kiểm tra các Lead/MQL chưa chuyển sang Discovery hoặc Need-fit.",
+      "next_action": "Lập danh sách deal cần follow-up và xác định bước xử lý cho từng deal."
+    }
+  ],
+  "data_health": {
+    "total_leads": 2,
+    "missing_course_count": 0,
+    "unmapped_course_count": 0,
+    "unmapped_rate_pct": 0,
+    "is_severe": false,
+    "rows": [
+      {
+        "mapping_status": "OK",
+        "issue_count": 0,
+        "total_leads": 2
+      }
+    ]
+  },
+  "writer_rules": {
+    "attention_limit": 3
+  }
+}

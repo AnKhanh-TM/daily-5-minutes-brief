@@ -1,0 +1,23 @@
+# Private production exports and secrets
+private/
+
+# Local assistant/editor settings
+.claude/
+.codex/
+
+# Temporary inspection files
+.tmp_artifact/
+tmp/
+temp/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+desktop.ini
+*.swp
+*.tmp
+
+# Local environment files
+.env
+.env.*
+!.env.example

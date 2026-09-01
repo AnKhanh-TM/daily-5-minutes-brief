@@ -1,0 +1,407 @@
+{
+  "name": "Daily 5 Minutes Brief_v1",
+  "nodes": [
+    {
+      "id": "trg-schedule",
+      "name": "Schedule Trigger",
+      "type": "n8n-nodes-base.scheduleTrigger",
+      "typeVersion": 1.2,
+      "position": [-400, 120],
+      "parameters": {
+        "rule": {
+          "interval": [
+            { "field": "cronExpression", "expression": "30 7 * * 1-6" }
+          ]
+        }
+      },
+      "notes": "07:30 ICT, Thu 2 - Thu 7 (CN nghi). Kiem tra timezone project cua n8n instance khop Asia/Ho_Chi_Minh, neu khong phai chinh lai gio cron cho dung 07:30 VN."
+    },
+    {
+      "id": "trg-manual",
+      "name": "Manual Trigger",
+      "type": "n8n-nodes-base.manualTrigger",
+      "typeVersion": 1,
+      "position": [-400, 320],
+      "parameters": {}
+    },
+    {
+      "id": "node-config",
+      "name": "Config",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [-180, 220],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "return [{\n  json: {\n    gcp_project: 'tmdatabase',\n    bq_dataset: 'dm_base_crm',\n    config_dataset: 'tmdatabase.dm_daily_brief',\n    timezone: 'Asia/Ho_Chi_Minh',\n    thresholds: {\n      kpi_normal_band_pct: 20,\n      warning_drop_pct: 20,\n      warning_zero_lead_days: 5,\n      warning_pending_days: 3,\n      warning_pending_min_count: 5,\n      warning_open_deal_days: 14,\n      warning_open_deal_min: 5,\n      cvr_drop_pp: 5,\n      focus_positive_pct: 15,\n      focus_negative_pct: -15,\n      min_base_volume: 3,\n      unmapped_alert_min: 1\n    },\n    limits: {\n      top_course_per_bu: 5,\n      top_utm_rows: 8,\n      top_utm_rows_weekly: 12,\n      max_warning_rows: 12,\n      agent_max_queries: 12\n    },\n    openai_model: 'gpt-4.1'\n  }\n}];"
+      },
+      "notes": "Doi tu node 'set' (theo SPEC) sang Code node de tranh rui ro sai schema Set-node v3 giua cac ban n8n. Sua tham so truc tiep trong jsCode."
+    },
+    {
+      "id": "node-resolve-day",
+      "name": "Resolve Day",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [40, 220],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "function vnParts(d) {\n  const fmt = new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Ho_Chi_Minh', year: 'numeric', month: '2-digit', day: '2-digit', weekday: 'short' });\n  const parts = fmt.formatToParts(d);\n  const get = (t) => parts.find(p => p.type === t).value;\n  return { y: get('year'), m: get('month'), d: get('day'), weekday: get('weekday') };\n}\nfunction uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {\n    const r = Math.random() * 16 | 0, v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\nconst now = new Date();\nconst todayVN = vnParts(now);\nconst weekdayMap = { Mon: 2, Tue: 3, Wed: 4, Thu: 5, Fri: 6, Sat: 7, Sun: 0 };\nconst reportDay = weekdayMap[todayVN.weekday];\nconst isSaturday = todayVN.weekday === 'Sat';\nconst yesterdayDate = new Date(now.getTime() - 24 * 60 * 60 * 1000);\nconst yVN = vnParts(yesterdayDate);\nconst reportDate = yVN.y + '-' + yVN.m + '-' + yVN.d;\nconst dayNames = { 2: 'Thu Hai', 3: 'Thu Ba', 4: 'Thu Tu', 5: 'Thu Nam', 6: 'Thu Sau', 7: 'Thu Bay' };\nconst focusTitles = {\n  2: 'MARKETING DAY 1 ALERT',\n  3: 'MARKETING DAY 2 & BRAND ALERT',\n  4: 'EXECUTIVE EDUCATION ALERT',\n  5: 'DATA SCHOOL ALERT',\n  6: 'TM AI ALERT',\n  7: 'FLEXIBLE COMBO & B2B TRAINING ALERT'\n};\nreturn [{\n  json: {\n    run_id: uuidv4(),\n    report_date: reportDate,\n    report_day: reportDay,\n    is_saturday: isSaturday,\n    weekday_label: dayNames[reportDay] || '',\n    focus_title: focusTitles[reportDay] || ''\n  }\n}];"
+      },
+      "notes": "report_day: 2=T2...7=T7 (T7 = nhom Flexible Combo + B2B Training). is_saturday dung de gate Q7 Weekly Review."
+    },
+    {
+      "id": "q0",
+      "name": "Q0 Data Health",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [260, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d) SELECT course_name_norm AS course_name, COUNT(DISTINCT deal_id) AS n FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p WHERE DATE(created_at) = p.d AND is_unmapped GROUP BY course_name_norm ORDER BY n DESC",
+        "options": { "useLegacySql": false }
+      },
+      "notes": "dm_base_crm_schema.md muc 3 (v_deal_enriched) + SPEC muc 3. Lead/deal chua map khoa, hoac selected_course NULL."
+    },
+    {
+      "id": "q1",
+      "name": "Q1 KPI",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [480, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH p AS ( SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d, DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 7 DAY) AS curr_start, DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS curr_end, DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 14 DAY) AS prev_start, DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 8 DAY) AS prev_end ), leads AS ( SELECT IF(DATE(created_at) BETWEEN p.curr_start AND p.curr_end, 'curr', 'prev') AS period, COUNT(DISTINCT deal_id) AS total_leads, COUNT(DISTINCT IF(stage_id IN (224,264,267,268,265,92,91,227,228,225,229,226,220,221,217,222,218,219,75,76,73,74,79,80,1328,1329,1330,1331,1332), deal_id, NULL)) AS mql, COUNT(DISTINCT IF(stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,218,219,75,76,74,80,1329,1330,1331,1332), deal_id, NULL)) AS sql_discovery, COUNT(DISTINCT IF(stage_id IN (224,267,268,92,91,227,228,225,229,226,220,221,222,219,75,76,1330,1331,1332), deal_id, NULL)) AS sql_needfit FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p WHERE DATE(created_at) BETWEEN p.prev_start AND p.curr_end GROUP BY period ), outcomes AS ( SELECT IF(DATE(closed_at) BETWEEN p.curr_start AND p.curr_end, 'curr', 'prev') AS period, COUNT(DISTINCT IF(deal_status = 'won', deal_id, NULL)) AS won_deals, COUNT(DISTINCT IF(deal_status = 'lost', deal_id, NULL)) AS lost_deals FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p WHERE closed_at IS NOT NULL AND DATE(closed_at) BETWEEN p.prev_start AND p.curr_end GROUP BY period ), yesterday AS ( SELECT COUNT(DISTINCT IF(DATE(created_at) = p.d, deal_id, NULL)) AS leads_yesterday, COUNT(DISTINCT IF(deal_status='won' AND DATE(closed_at) = p.d, deal_id, NULL)) AS won_yesterday FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p ), combined AS ( SELECT COALESCE(l.period, o.period) AS period, COALESCE(l.total_leads,0) / 7 AS avg_leads_per_day, COALESCE(l.mql,0) / 7 AS avg_mql_per_day, COALESCE(l.sql_discovery,0) / 7 AS avg_sql_discovery_per_day, COALESCE(l.sql_needfit,0) / 7 AS avg_sql_needfit_per_day, COALESCE(o.won_deals,0) / 7 AS avg_won_per_day, COALESCE(o.lost_deals,0) / 7 AS avg_lost_per_day, SAFE_DIVIDE(o.won_deals, o.won_deals + o.lost_deals) AS conversion_rate FROM leads l FULL OUTER JOIN outcomes o USING (period) ), pivot AS ( SELECT MAX(IF(period='curr', avg_leads_per_day, NULL)) AS curr_leads, MAX(IF(period='prev', avg_leads_per_day, NULL)) AS prev_leads, MAX(IF(period='curr', avg_mql_per_day, NULL)) AS curr_mql, MAX(IF(period='prev', avg_mql_per_day, NULL)) AS prev_mql, MAX(IF(period='curr', avg_sql_discovery_per_day, NULL)) AS curr_sql_discovery, MAX(IF(period='prev', avg_sql_discovery_per_day, NULL)) AS prev_sql_discovery, MAX(IF(period='curr', avg_sql_needfit_per_day, NULL)) AS curr_sql_needfit, MAX(IF(period='prev', avg_sql_needfit_per_day, NULL)) AS prev_sql_needfit, MAX(IF(period='curr', avg_won_per_day, NULL)) AS curr_won, MAX(IF(period='prev', avg_won_per_day, NULL)) AS prev_won, MAX(IF(period='curr', avg_lost_per_day, NULL)) AS curr_lost, MAX(IF(period='prev', avg_lost_per_day, NULL)) AS prev_lost, MAX(IF(period='curr', conversion_rate, NULL)) AS curr_cvr, MAX(IF(period='prev', conversion_rate, NULL)) AS prev_cvr FROM combined ) SELECT p.d AS report_date, y.leads_yesterday, y.won_yesterday, pv.curr_leads AS leads_avg7, SAFE_DIVIDE(pv.curr_leads - pv.prev_leads, NULLIF(pv.prev_leads,0)) AS leads_pct_change, pv.curr_won AS won_avg7, SAFE_DIVIDE(pv.curr_won - pv.prev_won, NULLIF(pv.prev_won,0)) AS won_pct_change, pv.curr_mql AS mql_avg7, SAFE_DIVIDE(pv.curr_mql - pv.prev_mql, NULLIF(pv.prev_mql,0)) AS mql_pct_change, pv.curr_sql_discovery AS sql_discovery_avg7, SAFE_DIVIDE(pv.curr_sql_discovery - pv.prev_sql_discovery, NULLIF(pv.prev_sql_discovery,0)) AS sql_discovery_pct_change, pv.curr_sql_needfit AS sql_needfit_avg7, SAFE_DIVIDE(pv.curr_sql_needfit - pv.prev_sql_needfit, NULLIF(pv.prev_sql_needfit,0)) AS sql_needfit_pct_change, pv.curr_lost AS lost_avg7, SAFE_DIVIDE(pv.curr_lost - pv.prev_lost, NULLIF(pv.prev_lost,0)) AS lost_pct_change, pv.curr_cvr AS conversion_rate, pv.curr_cvr - pv.prev_cvr AS cvr_change_pp FROM p, yesterday y, pivot pv",
+        "options": { "useLegacySql": false }
+      },
+      "notes": "SPEC-Daily-5-Minutes-Brief.md muc 7.3. Tra ve dung 1 dong. Khong co field revenue nao (dung quyet dinh muc 1: khong hien Revenue)."
+    },
+    {
+      "id": "q2",
+      "name": "Q2 Breakdown",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [700, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d), l AS ( SELECT course_type_norm, course_name_norm, COUNT(DISTINCT deal_id) AS leads FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p WHERE DATE(created_at) = p.d AND NOT is_unmapped GROUP BY 1,2 ), w AS ( SELECT course_type_norm, course_name_norm, COUNT(DISTINCT deal_id) AS deals FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p WHERE deal_status = 'won' AND DATE(closed_at) = p.d AND NOT is_unmapped GROUP BY 1,2 ) SELECT COALESCE(l.course_type_norm, w.course_type_norm) AS course_type, COALESCE(l.course_name_norm, w.course_name_norm) AS course_name, IFNULL(l.leads, 0) AS leads, IFNULL(w.deals, 0) AS deals FROM l FULL OUTER JOIN w ON l.course_type_norm = w.course_type_norm AND l.course_name_norm = w.course_name_norm ORDER BY course_type, deals DESC, leads DESC",
+        "options": { "useLegacySql": false }
+      },
+      "notes": "SPEC muc 7.4. NOT is_unmapped vi Q0 da xu ly rieng, tranh hien 2 lan."
+    },
+    {
+      "id": "q3",
+      "name": "Q3 UTM Daily",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [920, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d) SELECT COALESCE(NULLIF(TRIM(utm_source), ''), '(not set)') AS utm_source, COALESCE(NULLIF(TRIM(utm_medium), ''), '(not set)') AS utm_medium, COALESCE(NULLIF(TRIM(utm_campaign), ''), '(not set)') AS utm_campaign, COALESCE(NULLIF(TRIM(utm_content), ''), '(not set)') AS utm_content, COALESCE(NULLIF(TRIM(utm_product), ''), '(not set)') AS utm_product, COUNT(DISTINCT deal_id) AS n_leads, COUNTIF(deal_status = 'won') AS n_won, COUNTIF(deal_status = 'lost') AS n_lost FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p WHERE DATE(created_at) = p.d GROUP BY 1,2,3,4,5 ORDER BY n_leads DESC LIMIT {{ $('Config').item.json.limits.top_utm_rows }}",
+        "options": { "useLegacySql": false }
+      },
+      "notes": "dm_base_crm_schema.md muc 6.10, doi nguon sang v_deal_enriched de tru deal rac. LIMIT lay tu Config.limits.top_utm_rows."
+    },
+    {
+      "id": "q4",
+      "name": "Q4 No-Lead Courses",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1140, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d), last_lead AS ( SELECT course_key_norm, MAX(DATE(created_at)) AS last_lead_date FROM `tmdatabase.dm_base_crm.v_deal_enriched` GROUP BY course_key_norm ) SELECT c.course_type, c.course_name, ll.last_lead_date, DATE_DIFF(p.d, IFNULL(ll.last_lead_date, DATE_SUB(p.d, INTERVAL 999 DAY)), DAY) AS days_no_lead FROM `tmdatabase.dm_daily_brief.dim_course` c CROSS JOIN p LEFT JOIN last_lead ll ON ll.course_key_norm = c.course_key WHERE c.is_active AND (ll.last_lead_date IS NULL OR ll.last_lead_date < p.d) ORDER BY days_no_lead DESC",
+        "options": { "useLegacySql": false }
+      },
+      "notes": "SPEC muc 7.1. Danh sach nay hien nguyen trong khoi Khoa khong ve lead, khong loc theo warning_zero_lead_days (nguong do chi dung o Q5)."
+    },
+    {
+      "id": "q5",
+      "name": "Q5 Warning Scan",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1360, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d), lead_win AS ( SELECT course_key_norm, COUNTIF(DATE(created_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS lead_now, COUNTIF(DATE(created_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS lead_prev FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p WHERE DATE(created_at) >= DATE_SUB(d, INTERVAL 13 DAY) GROUP BY course_key_norm ), deal_win AS ( SELECT course_key_norm, COUNTIF(DATE(closed_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS deal_now, COUNTIF(DATE(closed_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS deal_prev FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p WHERE deal_status = 'won' AND closed_at IS NOT NULL AND DATE(closed_at) >= DATE_SUB(d, INTERVAL 13 DAY) GROUP BY course_key_norm ), no_lead AS ( SELECT c.course_key, DATE_DIFF(p.d, IFNULL(MAX(DATE(v.created_at)), DATE_SUB(p.d, INTERVAL 999 DAY)), DAY) AS days_no_lead FROM `tmdatabase.dm_daily_brief.dim_course` c CROSS JOIN p LEFT JOIN `tmdatabase.dm_base_crm.v_deal_enriched` v ON v.course_key_norm = c.course_key WHERE c.is_active GROUP BY c.course_key, p.d ), activity_agg AS ( SELECT deal_id, COUNT(*) AS activity_count FROM `tmdatabase.dm_base_crm.deal_activities` GROUP BY deal_id ), pending AS ( SELECT v.course_key_norm, COUNT(DISTINCT v.deal_id) AS pending_leads FROM `tmdatabase.dm_base_crm.v_deal_enriched` v LEFT JOIN activity_agg a ON a.deal_id = v.deal_id CROSS JOIN p WHERE v.deal_status = 'open' AND IFNULL(a.activity_count, 0) = 0 AND DATE(v.created_at) <= DATE_SUB(p.d, INTERVAL {{ $('Config').item.json.thresholds.warning_pending_days }} DAY) GROUP BY v.course_key_norm ), open_deal AS ( SELECT course_key_norm, COUNT(DISTINCT deal_id) AS stale_open_deals FROM `tmdatabase.dm_base_crm.v_deal_enriched` WHERE deal_status = 'open' AND stage_start_at IS NOT NULL AND DATETIME_DIFF(CURRENT_DATETIME('Asia/Ho_Chi_Minh'), stage_start_at, DAY) > {{ $('Config').item.json.thresholds.warning_open_deal_days }} GROUP BY course_key_norm ) SELECT c.course_type, c.course_name, ROUND(IFNULL(lw.lead_now,0)/7, 2) AS lead_per_day_now, ROUND(IFNULL(lw.lead_prev,0)/7, 2) AS lead_per_day_prev, SAFE_DIVIDE(IFNULL(lw.lead_now,0) - IFNULL(lw.lead_prev,0), NULLIF(lw.lead_prev,0)) * 100 AS lead_delta_pct, ROUND(IFNULL(dw.deal_now,0)/7, 2) AS deal_per_day_now, ROUND(IFNULL(dw.deal_prev,0)/7, 2) AS deal_per_day_prev, SAFE_DIVIDE(IFNULL(dw.deal_now,0) - IFNULL(dw.deal_prev,0), NULLIF(dw.deal_prev,0)) * 100 AS deal_delta_pct, nl.days_no_lead, IFNULL(pd.pending_leads, 0) AS pending_leads, IFNULL(od.stale_open_deals, 0) AS stale_open_deals, (IFNULL(lw.lead_prev,0) >= {{ $('Config').item.json.thresholds.min_base_volume }} AND SAFE_DIVIDE(IFNULL(lw.lead_now,0) - lw.lead_prev, lw.lead_prev) * 100 <= -{{ $('Config').item.json.thresholds.warning_drop_pct }}) AS flag_lead_drop, (IFNULL(dw.deal_prev,0) >= {{ $('Config').item.json.thresholds.min_base_volume }} AND SAFE_DIVIDE(IFNULL(dw.deal_now,0) - dw.deal_prev, dw.deal_prev) * 100 <= -{{ $('Config').item.json.thresholds.warning_drop_pct }}) AS flag_deal_drop, (nl.days_no_lead >= {{ $('Config').item.json.thresholds.warning_zero_lead_days }}) AS flag_no_lead, (IFNULL(pd.pending_leads,0) >= {{ $('Config').item.json.thresholds.warning_pending_min_count }}) AS flag_pending, (IFNULL(od.stale_open_deals,0) >= {{ $('Config').item.json.thresholds.warning_open_deal_min }}) AS flag_stale_open FROM `tmdatabase.dm_daily_brief.dim_course` c LEFT JOIN lead_win lw ON lw.course_key_norm = c.course_key LEFT JOIN deal_win dw ON dw.course_key_norm = c.course_key LEFT JOIN no_lead nl ON nl.course_key = c.course_key LEFT JOIN pending pd ON pd.course_key_norm = c.course_key LEFT JOIN open_deal od ON od.course_key_norm = c.course_key WHERE c.is_active ORDER BY lead_delta_pct ASC NULLS LAST",
+        "options": { "useLegacySql": false }
+      },
+      "notes": "SPEC muc 7.2. Build Payload se loc chi giu dong co >=1 co TRUE, cap max_warning_rows."
+    },
+    {
+      "id": "q6",
+      "name": "Q6 Focus Group",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [1580, 220],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d), scope AS ( SELECT course_key, course_name, course_type FROM `tmdatabase.dm_daily_brief.dim_course` WHERE report_day = {{ $('Resolve Day').item.json.report_day }} AND is_active ), lead_agg AS ( SELECT v.course_key_norm, COUNTIF(DATE(v.created_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS n_now, COUNTIF(DATE(v.created_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p7, COUNTIF(DATE(v.created_at) BETWEEN DATE_SUB(d, INTERVAL 36 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p30, COUNTIF(DATE(v.created_at) BETWEEN DATE_SUB(d, INTERVAL 96 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p90 FROM `tmdatabase.dm_base_crm.v_deal_enriched` v, p WHERE v.course_key_norm IN (SELECT course_key FROM scope) AND DATE(v.created_at) >= DATE_SUB(d, INTERVAL 96 DAY) GROUP BY v.course_key_norm ), deal_agg AS ( SELECT v.course_key_norm, COUNTIF(DATE(v.closed_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS n_now, COUNTIF(DATE(v.closed_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p7, COUNTIF(DATE(v.closed_at) BETWEEN DATE_SUB(d, INTERVAL 36 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p30, COUNTIF(DATE(v.closed_at) BETWEEN DATE_SUB(d, INTERVAL 96 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS n_p90 FROM `tmdatabase.dm_base_crm.v_deal_enriched` v, p WHERE v.deal_status = 'won' AND v.course_key_norm IN (SELECT course_key FROM scope) AND v.closed_at IS NOT NULL AND DATE(v.closed_at) >= DATE_SUB(d, INTERVAL 96 DAY) GROUP BY v.course_key_norm ) SELECT s.course_type, s.course_name, ROUND(IFNULL(la.n_now,0)/7, 2) AS lead_pd_now, ROUND(IFNULL(la.n_p7,0)/7, 2) AS lead_pd_prev7, ROUND(IFNULL(la.n_p30,0)/30, 2) AS lead_pd_prev30, ROUND(IFNULL(la.n_p90,0)/90, 2) AS lead_pd_prev90, ROUND(IFNULL(da.n_now,0)/7, 2) AS deal_pd_now, ROUND(IFNULL(da.n_p7,0)/7, 2) AS deal_pd_prev7, ROUND(IFNULL(da.n_p30,0)/30, 2) AS deal_pd_prev30, ROUND(IFNULL(da.n_p90,0)/90, 2) AS deal_pd_prev90 FROM scope s LEFT JOIN lead_agg la ON la.course_key_norm = s.course_key LEFT JOIN deal_agg da ON da.course_key_norm = s.course_key ORDER BY deal_pd_now DESC",
+        "options": { "useLegacySql": false }
+      },
+      "notes": "SPEC muc 7.5. report_day lay dong tu Resolve Day. T7 (report_day=7) tu dong ra 4 khoa Flexible Combo 2/3/4 + B2B Training."
+    },
+    {
+      "id": "node-is-saturday",
+      "name": "Is Saturday?",
+      "type": "n8n-nodes-base.if",
+      "typeVersion": 2,
+      "position": [1800, 220],
+      "parameters": {
+        "conditions": {
+          "options": { "caseSensitive": true, "leftValue": "", "typeValidation": "strict" },
+          "conditions": [
+            {
+              "id": "cond-saturday",
+              "leftValue": "={{ $('Resolve Day').item.json.is_saturday }}",
+              "rightValue": true,
+              "operator": { "type": "boolean", "operation": "true", "singleValue": true }
+            }
+          ],
+          "combinator": "and"
+        }
+      },
+      "notes": "True (index 0) = chay Q3b + Q7 Weekly Review truoc khi vao Build Payload. False (index 1) = di thang vao Build Payload."
+    },
+    {
+      "id": "q3b",
+      "name": "Q3b UTM Weekly",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [2020, 100],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH p AS ( SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 6 DAY) AS d_start, DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d_end ) SELECT COALESCE(NULLIF(TRIM(utm_source), ''), '(not set)') AS utm_source, COALESCE(NULLIF(TRIM(utm_medium), ''), '(not set)') AS utm_medium, COALESCE(NULLIF(TRIM(utm_campaign), ''), '(not set)') AS utm_campaign, COALESCE(NULLIF(TRIM(utm_content), ''), '(not set)') AS utm_content, COALESCE(NULLIF(TRIM(utm_product), ''), '(not set)') AS utm_product, COUNT(DISTINCT deal_id) AS n_leads, COUNTIF(deal_status = 'won') AS n_won, COUNTIF(deal_status = 'lost') AS n_lost, SAFE_DIVIDE(COUNTIF(deal_status='won'), COUNTIF(deal_status IN ('won','lost'))) AS conversion_rate FROM `tmdatabase.dm_base_crm.v_deal_enriched`, p WHERE DATE(created_at) BETWEEN p.d_start AND p.d_end GROUP BY 1,2,3,4,5 ORDER BY n_leads DESC LIMIT {{ $('Config').item.json.limits.top_utm_rows_weekly }}",
+        "options": { "useLegacySql": false }
+      },
+      "notes": "dm_base_crm_schema.md muc 6.11. Chi chay khi Is Saturday? = true."
+    },
+    {
+      "id": "q7",
+      "name": "Q7 Weekly Review",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [2240, 100],
+      "parameters": {
+        "operation": "executeQuery",
+        "projectId": "tmdatabase",
+        "sqlQuery": "=WITH p AS (SELECT DATE_SUB(CURRENT_DATE('Asia/Ho_Chi_Minh'), INTERVAL 1 DAY) AS d) SELECT c.course_type, c.course_name, COUNTIF(DATE(l.created_at) BETWEEN DATE_SUB(d, INTERVAL 6 DAY) AND d) AS leads_this_week, COUNTIF(DATE(l.created_at) BETWEEN DATE_SUB(d, INTERVAL 13 DAY) AND DATE_SUB(d, INTERVAL 7 DAY)) AS leads_last_week, (SELECT COUNT(DISTINCT dd.deal_id) FROM `tmdatabase.dm_base_crm.v_deal_enriched` dd WHERE dd.course_key_norm = c.course_key AND dd.deal_status = 'won' AND DATE(dd.closed_at) BETWEEN DATE_SUB(p.d, INTERVAL 6 DAY) AND p.d) AS deals_this_week, (SELECT COUNT(DISTINCT dd.deal_id) FROM `tmdatabase.dm_base_crm.v_deal_enriched` dd WHERE dd.course_key_norm = c.course_key AND dd.deal_status = 'won' AND DATE(dd.closed_at) BETWEEN DATE_SUB(p.d, INTERVAL 13 DAY) AND DATE_SUB(p.d, INTERVAL 7 DAY)) AS deals_last_week FROM `tmdatabase.dm_daily_brief.dim_course` c, p LEFT JOIN `tmdatabase.dm_base_crm.v_deal_enriched` l ON l.course_key_norm = c.course_key WHERE c.is_active GROUP BY c.course_type, c.course_name, c.course_key, p.d ORDER BY c.course_type, deals_this_week DESC",
+        "options": { "useLegacySql": false }
+      },
+      "notes": "SPEC muc 7.6. Scope toan bo khoa active (khac Q6 chi scope 1 nhom/ngay)."
+    },
+    {
+      "id": "node-build-payload",
+      "name": "Build Payload",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [2460, 220],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const cfg = $('Config').first().json;\nconst rd = $('Resolve Day').first().json;\nconst q0 = $('Q0 Data Health').all().map(i => i.json);\nconst q1 = $('Q1 KPI').first() ? $('Q1 KPI').first().json : {};\nconst q2 = $('Q2 Breakdown').all().map(i => i.json);\nconst q3 = $('Q3 UTM Daily').all().map(i => i.json);\nconst q4 = $('Q4 No-Lead Courses').all().map(i => i.json);\nconst q5raw = $('Q5 Warning Scan').all().map(i => i.json);\nconst q6 = $('Q6 Focus Group').all().map(i => i.json);\n\nlet q7 = [];\nlet q3weekly = [];\nif (rd.is_saturday) {\n  q7 = $('Q7 Weekly Review').all().map(i => i.json);\n  q3weekly = $('Q3b UTM Weekly').all().map(i => i.json);\n}\n\nfunction countFlags(row) {\n  return ['flag_lead_drop', 'flag_deal_drop', 'flag_no_lead', 'flag_pending', 'flag_stale_open']\n    .reduce((n, k) => n + (row[k] ? 1 : 0), 0);\n}\nconst q5 = q5raw\n  .filter(r => countFlags(r) > 0)\n  .sort((a, b) => countFlags(b) - countFlags(a))\n  .slice(0, cfg.limits.max_warning_rows);\n\nconst unmapped_total = q0.reduce((s, r) => s + Number(r.n || 0), 0);\nconst data_health = {\n  unmapped_total,\n  show_alert: unmapped_total >= cfg.thresholds.unmapped_alert_min,\n  rows: q0\n};\n\nreturn [{\n  json: {\n    run_id: rd.run_id,\n    report_date: rd.report_date,\n    weekday_label: rd.weekday_label,\n    focus_title: rd.focus_title,\n    is_saturday: rd.is_saturday,\n    kpi: q1,\n    breakdown: q2,\n    utm_daily: q3,\n    utm_weekly: q3weekly,\n    no_lead_courses: q4,\n    warnings: q5,\n    focus_group: q6,\n    weekly_review: q7,\n    data_health\n  }\n}];"
+      },
+      "notes": "Gop Q0-Q7 thanh 1 JSON gon cho Agent 1. Khong co field revenue nao (Q1 von khong tinh). Loc Q5 chi giu dong co co, cap max_warning_rows."
+    },
+    {
+      "id": "node-lm-writer",
+      "name": "OpenAI Model - Writer",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [2460, 420],
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": { "temperature": 0.2 }
+      },
+      "credentials": { "openAiApi": { "id": "", "name": "OpenAI account" } }
+    },
+    {
+      "id": "node-agent-1",
+      "name": "Agent 1 - Brief Writer",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [2680, 220],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Du lieu JSON tu Build Payload:\n{{ JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "Ban la chuyen vien phan tich kinh doanh cua Tomorrow Marketers. Nhiem vu: doc JSON so lieu va viet lai thanh bao cao tieng Viet theo DUNG format da duyet (khoi 📊 HOM QUA / 🔗 Nguon lead / 🚫 Khoa khong ve lead / 🧩 Data health / ⚠️ WARNING / 📚 Focus Group / 📅 Weekly Review neu la Thu 7).\n\nQUY TAC BAT BUOC:\n1. TUYET DOI khong tu tinh toan, khong suy doan, khong bia so. Moi con so phai lay nguyen tu JSON input. Neu mot truong khong co du lieu, ghi \"khong co du lieu\".\n2. Chi dung SO DEAL, SO LEAD, va CONVERSION RATE (%). TUYET DOI KHONG duoc nhac toi Revenue/doanh thu/tien duoi bat ky hinh thuc nao, ke ca khi JSON input co lot truong do.\n3. Van phong: ngan, gon, kho. Khong hoa my. Nguoi doc chi co 5 phut.\n4. Giu nguyen emoji va cau truc tieu de cua template.\n5. Khong tu them nhan dinh nguyen nhan - do la viec cua Agent phan tich phia sau.\n6. Neu data_health.unmapped_total > 0, BAT BUOC in dong 🧩 Data health kem danh sach ten khoa chua map. Khong duoc bo qua dong nay.\n7. Khoi 🔗 Nguon lead dung utm_daily - combo (not set) o ca 5 field phai goi la \"khong qua tracking / lead tay\", khong goi la \"content\".\n8. Neu is_saturday = true, them khoi 📅 WEEKLY REVIEW dung du lieu weekly_review + utm_weekly, sau khoi 📚 Focus Group."
+        }
+      },
+      "notes": "SPEC muc 9.1. Khong co tool. Output la text cho Agent 2 doc tiep."
+    },
+    {
+      "id": "node-lm-analyst",
+      "name": "OpenAI Model - Analyst",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [2680, 420],
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": { "temperature": 0.3 }
+      },
+      "credentials": { "openAiApi": { "id": "", "name": "OpenAI account" } }
+    },
+    {
+      "id": "node-bq-tool",
+      "name": "BigQuery Tool",
+      "type": "n8n-nodes-base.googleBigQueryTool",
+      "typeVersion": 1,
+      "position": [2680, 620],
+      "parameters": {
+        "projectId": "tmdatabase",
+        "description": "Chi doc dataset tmdatabase.dm_base_crm. Bang/view duoc phep: v_deal_enriched, stages, pipelines, deal_activities (phai aggregate theo deal_id truoc khi JOIN). Voi deal LOST doc them failed_content, failed_reason_id. CHI duoc viet SELECT, cam INSERT/UPDATE/DELETE/CREATE/DROP/MERGE. Moi query phai co LIMIT toi da 200 dong va loc theo khoang ngay cu the. Toi da 12 query moi lan chay. TUYET DOI khong nhac Revenue/doanh thu trong ket luan."
+      },
+      "notes": "RUI RO CAO NHAT trong file nay: chua chac chan node type 'n8n-nodes-base.googleBigQueryTool' ton tai dung nhu ten trong n8n instance cua ban. Neu import loi/khong nhan dien node nay, thay bang node '@n8n/n8n-nodes-langchain.toolHttpRequest' goi BigQuery REST API (POST https://bigquery.googleapis.com/bigquery/v2/projects/tmdatabase/queries) hoac '@n8n/n8n-nodes-langchain.toolWorkflow' goi sub-workflow rieng chua node Google BigQuery."
+    },
+    {
+      "id": "node-agent-2",
+      "name": "Agent 2 - Root Cause Analyst",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [2900, 220],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Brief da viet (Agent 1):\n{{ $json.output || $json.text || JSON.stringify($json) }}\n\nDanh sach bat thuong da danh dau (warnings):\n{{ JSON.stringify($('Build Payload').first().json.warnings) }}",
+        "options": {
+          "systemMessage": "Ban la chuyen vien phan tich nguyen nhan cua Tomorrow Marketers. Ban co quyen truy van BigQuery (tool BigQuery Tool) de tim NGUYEN NHAN cho cac diem bat thuong da duoc danh dau.\n\nCac bang/view duoc phep doc (dataset tmdatabase.dm_base_crm): v_deal_enriched (moi cot deals goc + course_key_norm, course_name_norm, course_type_norm, report_day, is_unmapped), stages(stage_id, name, pipeline_id, order_nr), pipelines(pipeline_id, name), deal_activities(deal_id, user_id, type, created_at) - PHAI aggregate theo deal_id truoc khi JOIN.\n\nKhi phan tich deal LOST, doc them cot failed_content (text tu do ly do lost) va failed_reason_id de co ngu canh dinh tinh.\n\nQUY TAC:\n- CHI duoc viet cau SELECT. Cam INSERT/UPDATE/DELETE/CREATE/DROP/MERGE.\n- Moi query phai co LIMIT (toi da 200 dong) va phai loc theo khoang ngay cu the.\n- Toi da 12 query cho ca lan chay. Query co muc dich, khong \"quet bua\".\n- So lieu cong bo trong ket luan LAY TU v_deal_enriched. TUYET DOI KHONG nhac Revenue/doanh thu.\n\nTHU TU KIEM TRA GIA THUYET (voi moi diem bat thuong):\n(a) Co cau utm nguon/campaign doi the nao (doi chieu utm_daily/utm_weekly da co trong input)\n(b) Tac o stage nao (stage_name + stage_start_at)\n(c) Chat luong lead qua failed_content/failed_reason_id (dac biet deal lost)\n(d) Pham vi: 1 khoa hay lan ca course_type? 1 owner hay toan team?\n(e) Mua vu: cung ky thang/nam truoc co tuong tu?\n\n- KET LUAN PHAI KEM SO lay tu chinh query cua ban.\n- Neu du lieu khong du, noi thang: \"chua du du lieu de ket luan, can kiem tra thu cong [viec gi]\". TUYET DOI khong doan bua.\n- Toi da 5 gach dau dong, moi dong: [Hien tuong] -> [Nguyen nhan + so lieu chung minh]."
+        }
+      },
+      "notes": "SPEC muc 9.2. Agent duy nhat co tool BigQuery (ket noi qua node BigQuery Tool ben duoi, connection type ai_tool)."
+    },
+    {
+      "id": "node-lm-advisor",
+      "name": "OpenAI Model - Advisor",
+      "type": "@n8n/n8n-nodes-langchain.lmChatOpenAi",
+      "typeVersion": 1,
+      "position": [2900, 420],
+      "parameters": {
+        "model": "gpt-4.1",
+        "options": { "temperature": 0.4 }
+      },
+      "credentials": { "openAiApi": { "id": "", "name": "OpenAI account" } }
+    },
+    {
+      "id": "node-agent-3",
+      "name": "Agent 3 - Action Advisor",
+      "type": "@n8n/n8n-nodes-langchain.agent",
+      "typeVersion": 1.7,
+      "position": [3120, 220],
+      "parameters": {
+        "promptType": "define",
+        "text": "=Brief (Agent 1):\n{{ $('Agent 1 - Brief Writer').first().json.output || '' }}\n\nPhan tich nguyen nhan (Agent 2):\n{{ $json.output || $json.text || JSON.stringify($json) }}",
+        "options": {
+          "systemMessage": "De xuat 3-5 hanh dong lam duoc NGAY HOM NAY. Moi hanh dong:\n- Bam sat 1 phat hien cu the o phan AI ANALYZE (ghi ro bam vao phat hien nao)\n- Neu ro: lam gi - bo phan nao lam - ky vong thay gi thay doi\n- Uu tien viec trong tam kiem soat noi bo (phan bo ngan sach, goi lead pending, day deal dang open, doi noi dung ads), KHONG de xuat chung chung kieu \"tang cuong marketing\" hay \"cai thien chat luong\".\nSap xep theo muc uu tien. Khong de xuat gi neu khong co phat hien tuong ung. TUYET DOI khong nhac Revenue/doanh thu."
+        }
+      },
+      "notes": "SPEC muc 9.3. Khong co tool."
+    },
+    {
+      "id": "node-assemble",
+      "name": "Assemble Brief",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [3340, 220],
+      "parameters": {
+        "mode": "runOnceForAllItems",
+        "language": "javaScript",
+        "jsCode": "const payload = $('Build Payload').first().json;\nconst writer = $('Agent 1 - Brief Writer').first().json.output || $('Agent 1 - Brief Writer').first().json.text || '';\nconst analyst = $('Agent 2 - Root Cause Analyst').first().json.output || $('Agent 2 - Root Cause Analyst').first().json.text || '';\nconst advisor = $json.output || $json.text || '';\n\nconst header = '☀️ DAILY 5 MINUTES BRIEF - ' + payload.weekday_label + ', ' + payload.report_date + '\\nSo lieu: hom qua | Tham chieu: TB 7 ngay gan nhat\\n\\n';\n\nconst finalText = header + writer + '\\n\\n🔍 AI ANALYZE\\n' + analyst + '\\n\\n🎯 SUGGESTED ACTION\\n' + advisor;\n\nreturn [{\n  json: {\n    run_id: payload.run_id,\n    report_date: payload.report_date,\n    sent_at: new Date().toISOString(),\n    query_results: JSON.stringify(payload),\n    agent_output: finalText,\n    status: 'success',\n    error_message: null\n  }\n}];"
+      },
+      "notes": "Ghep header + 3 khoi agent thanh 1 van ban hoan chinh. Cac field output nay dat dung ten cot cua bang brief_run_log de node Log Run insert bang auto-map."
+    },
+    {
+      "id": "node-final-brief",
+      "name": "Final Brief",
+      "type": "n8n-nodes-base.set",
+      "typeVersion": 3.4,
+      "position": [3560, 220],
+      "parameters": {
+        "mode": "manual",
+        "assignments": {
+          "assignments": [
+            { "id": "a1", "name": "final_brief_text", "type": "string", "value": "={{ $json.agent_output }}" }
+          ]
+        },
+        "options": {}
+      },
+      "notes": "Output chinh cua workflow (theo yeu cau SPEC). Neu Set node v3 khong khop schema n8n cua ban, doi tam sang Code node tra ve { final_brief_text: $json.agent_output }."
+    },
+    {
+      "id": "node-log-run",
+      "name": "Log Run",
+      "type": "n8n-nodes-base.googleBigQuery",
+      "typeVersion": 2,
+      "position": [3780, 220],
+      "parameters": {
+        "operation": "insert",
+        "projectId": "tmdatabase",
+        "datasetId": "dm_daily_brief",
+        "tableId": "brief_run_log",
+        "options": {}
+      },
+      "notes": "Ghi 1 dong vao brief_run_log de doi chieu. Input lay tu Assemble Brief (khong phai Final Brief) vi cac field da dat dung ten cot: run_id, report_date, sent_at, query_results, agent_output, status, error_message. Trong UI, bat 'Map Automatically' / 'Auto-map Input Data' cho operation Insert neu co tuy chon nay; ten tham so insert co the khac tuy phien ban node BigQuery."
+    },
+    {
+      "id": "node-send-base",
+      "name": "Send to Base.vn",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [4000, 220],
+      "disabled": true,
+      "parameters": {
+        "method": "POST",
+        "url": "https://REPLACE-WITH-BASE-VN-WEBHOOK-URL",
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ { text: $('Final Brief').first().json.final_brief_text } }}",
+        "options": {}
+      },
+      "notes": "DISABLED theo dung SPEC v1 - chi dien webhook URL that va bo tick 'disabled' khi san sang gui that."
+    }
+  ],
+  "connections": {
+    "Schedule Trigger": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Manual Trigger": { "main": [[{ "node": "Config", "type": "main", "index": 0 }]] },
+    "Config": { "main": [[{ "node": "Resolve Day", "type": "main", "index": 0 }]] },
+    "Resolve Day": { "main": [[{ "node": "Q0 Data Health", "type": "main", "index": 0 }]] },
+    "Q0 Data Health": { "main": [[{ "node": "Q1 KPI", "type": "main", "index": 0 }]] },
+    "Q1 KPI": { "main": [[{ "node": "Q2 Breakdown", "type": "main", "index": 0 }]] },
+    "Q2 Breakdown": { "main": [[{ "node": "Q3 UTM Daily", "type": "main", "index": 0 }]] },
+    "Q3 UTM Daily": { "main": [[{ "node": "Q4 No-Lead Courses", "type": "main", "index": 0 }]] },
+    "Q4 No-Lead Courses": { "main": [[{ "node": "Q5 Warning Scan", "type": "main", "index": 0 }]] },
+    "Q5 Warning Scan": { "main": [[{ "node": "Q6 Focus Group", "type": "main", "index": 0 }]] },
+    "Q6 Focus Group": { "main": [[{ "node": "Is Saturday?", "type": "main", "index": 0 }]] },
+    "Is Saturday?": {
+      "main": [
+        [{ "node": "Q3b UTM Weekly", "type": "main", "index": 0 }],
+        [{ "node": "Build Payload", "type": "main", "index": 0 }]
+      ]
+    },
+    "Q3b UTM Weekly": { "main": [[{ "node": "Q7 Weekly Review", "type": "main", "index": 0 }]] },
+    "Q7 Weekly Review": { "main": [[{ "node": "Build Payload", "type": "main", "index": 0 }]] },
+    "Build Payload": { "main": [[{ "node": "Agent 1 - Brief Writer", "type": "main", "index": 0 }]] },
+    "Agent 1 - Brief Writer": { "main": [[{ "node": "Agent 2 - Root Cause Analyst", "type": "main", "index": 0 }]] },
+    "Agent 2 - Root Cause Analyst": { "main": [[{ "node": "Agent 3 - Action Advisor", "type": "main", "index": 0 }]] },
+    "Agent 3 - Action Advisor": { "main": [[{ "node": "Assemble Brief", "type": "main", "index": 0 }]] },
+    "Assemble Brief": { "main": [[{ "node": "Final Brief", "type": "main", "index": 0 }]] },
+    "Final Brief": { "main": [[{ "node": "Log Run", "type": "main", "index": 0 }]] },
+    "Log Run": { "main": [[{ "node": "Send to Base.vn", "type": "main", "index": 0 }]] },
+    "OpenAI Model - Writer": { "ai_languageModel": [[{ "node": "Agent 1 - Brief Writer", "type": "ai_languageModel", "index": 0 }]] },
+    "OpenAI Model - Analyst": { "ai_languageModel": [[{ "node": "Agent 2 - Root Cause Analyst", "type": "ai_languageModel", "index": 0 }]] },
+    "OpenAI Model - Advisor": { "ai_languageModel": [[{ "node": "Agent 3 - Action Advisor", "type": "ai_languageModel", "index": 0 }]] },
+    "BigQuery Tool": { "ai_tool": [[{ "node": "Agent 2 - Root Cause Analyst", "type": "ai_tool", "index": 0 }]] }
+  },
+  "pinData": {},
+  "settings": {
+    "executionOrder": "v1",
+    "timezone": "Asia/Ho_Chi_Minh"
+  }
+}
