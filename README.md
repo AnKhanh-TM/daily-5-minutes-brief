@@ -55,7 +55,7 @@ flowchart LR
 
 ## Lịch nhóm khóa học
 
-Nguồn chính thức là [dim_course_daily_brief.xlsx](dim_course_daily_brief.xlsx). Cột `report_day` hiện được dùng như **thứ của ngày workflow chạy**, dù tên cột có chữ “report”. Dữ liệu Daily vẫn lấy đến hết ngày hôm trước.
+Nguồn chính thức là [dim_course_daily_brief.xlsx](dim_course_daily_brief.xlsx) hoặc [dim_course_daily_brief](https://docs.google.com/spreadsheets/d/1jSquBy3n7KlTMgn1DfgHbWmLEryT_i96giv3dtM38jg/edit?usp=sharing). Cột `report_day` hiện được dùng như **thứ của ngày workflow chạy**, dù tên cột có chữ “report”. Dữ liệu Daily vẫn lấy đến hết ngày hôm trước.
 
 | Ngày workflow chạy | `report_day` | Nội dung |
 |---|---:|---|
