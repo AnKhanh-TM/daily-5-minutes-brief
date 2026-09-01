@@ -8,6 +8,10 @@ Workflow n8n này tự động tổng hợp dữ liệu CRM thành một bản b
 
 Workflow chạy lúc **08:00 mỗi ngày**, theo múi giờ `Asia/Ho_Chi_Minh`.
 
+## Sơ đồ workflow
+
+![Sơ đồ tổng quan Daily 5 Minutes Brief](docs/assets/workflow-overview.png)
+
 ## File quan trọng
 
 ```text
